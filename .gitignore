@@ -1,0 +1,46 @@
+# --- secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.venv/
+venv/
+
+# --- node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+*.log
+npm-debug.log*
+
+# --- ide / os ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- claude code local state ---
+.claude/settings.local.json
+
+# --- local blob-storage stand-in (dev only) ---
+deploy/blob-data/
+
+# --- temp / scratch ---
+tmp/
+scratch/
+*.local
