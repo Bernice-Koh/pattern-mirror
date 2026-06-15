@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pattern-mirror"
+description = "Longitudinal bias-pattern analysis service for pattern-mirror."
+requires-python = ">=3.12"
+dynamic = ["version"]
+dependencies = [
+    "fastapi>=0.137.1",
+    "pydantic-settings>=2.14.1",
+    "python-dotenv>=1.2.2",
+    "structlog>=26.1.0",
+    "uvicorn[standard]>=0.49.0",
+]
+
+# Single source of version truth: read __version__ from the package itself
+# rather than duplicating the string here.
+[tool.hatch.version]
+path = "src/pattern_mirror/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pattern_mirror"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "SIM"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pattern_mirror"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.1.0",
+    "pytest>=9.1.0",
+    "ruff>=0.15.17",
+]
