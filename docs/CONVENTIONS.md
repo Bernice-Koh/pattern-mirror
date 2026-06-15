@@ -81,5 +81,6 @@ Tests live in `backend/tests/`, a parallel tree mirroring the package's purpose 
 ## Secrets
 
 - Never commit secrets, even temporarily. `.env` is gitignored; `.env.example` (template only) is committed.
+- Each service owns its own config — `backend/.env` alongside `backend/.env.example`, and the frontend likewise — loaded relative to that service's directory. There is no shared root `.env`.
 - The Anthropic API key exists only in `.env` locally and in CI/deploy secret stores — never in code, issues, or logs.
 - Synthetic data only: no real UBS documents, employee names, or feedback ever enter this repo. MVP peer-feedback data is mocked by design.

@@ -3,11 +3,11 @@
 import pytest
 from pydantic import ValidationError
 
-from pattern_mirror.core.config import _REPO_ROOT, Settings
+from pattern_mirror.core.config import Settings
 
-# Settings are constructed with _env_file=None so the suite never reads the
-# developer's real .env at the repo root; every value comes from the patched
-# process environment, keeping each test hermetic.
+# Settings are constructed with _env_file=None so the suite never reads a real
+# .env on disk; every value comes from the patched process environment, keeping
+# each test hermetic.
 
 
 def test_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -36,9 +36,3 @@ def test_missing_required_variable_fails_loudly(monkeypatch: pytest.MonkeyPatch)
         Settings(_env_file=None)
 
     assert "app_env" in str(exc_info.value).lower()
-
-
-def test_repo_root_anchor_points_at_repo(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Guards the parents[4] depth in config.py: if the file ever moves, this
-    # fails loudly instead of silently resolving .env to the wrong directory.
-    assert (_REPO_ROOT / ".env.example").is_file()

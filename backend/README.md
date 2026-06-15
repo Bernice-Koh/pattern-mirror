@@ -9,8 +9,14 @@ Python 3.12 / FastAPI service for the pattern-mirror analysis engine and API.
 
 ## Setup
 
-1. **Create your `.env`** from the template (run from the repository root — the
-   service reads `.env` there regardless of where it is launched from):
+All backend commands run from this `backend/` directory:
+
+```bash
+cd backend
+```
+
+1. **Create your `.env`** from the template (it lives here in `backend/` and is
+   loaded relative to this directory):
 
    ```bash
    cp .env.example .env            # PowerShell: Copy-Item .env.example .env
@@ -21,7 +27,6 @@ Python 3.12 / FastAPI service for the pattern-mirror analysis engine and API.
 2. **Install dependencies** (creates `backend/.venv` and resolves `backend/uv.lock`):
 
    ```bash
-   cd backend
    uv sync
    ```
 

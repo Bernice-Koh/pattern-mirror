@@ -6,13 +6,9 @@ field, rather than failing deep inside a later request.
 """
 
 from functools import lru_cache
-from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# Repo root (where .env lives) is four levels up from this file.
-_REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 class Settings(BaseSettings):
@@ -24,7 +20,9 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=_REPO_ROOT / ".env",
+        # Loaded from a .env in the working directory (backend/) in dev; in CI
+        # and prod no .env ships and real environment variables are used.
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
