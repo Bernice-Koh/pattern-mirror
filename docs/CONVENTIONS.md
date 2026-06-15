@@ -8,7 +8,7 @@ The project shape these assume: a Python/FastAPI backend with a LangGraph-orches
 
 Four concerns at the root: `backend/`, `frontend/`, `docs/`, `deploy/`. Never mix.
 
-Inside `backend/src/`, separate by what code is *for*, not by file type:
+Backend code is one installable package, `pattern_mirror`, under `backend/src/` (a standard src-layout). Inside `backend/src/pattern_mirror/`, separated by what code is *for*, not by file type:
 
 - `api/` — FastAPI routers and request/response models. Thin.
 - `engine/` — the five-stage analysis pipeline and LangGraph orchestrator. Stage naming follows the design doc: intelligent components are *Agents*, deterministic components are *Modules*.
@@ -18,7 +18,7 @@ Inside `backend/src/`, separate by what code is *for*, not by file type:
 - `jobs/` — entrypoints for scheduled work (e.g. nightly dictionary-candidate summarisation).
 - `core/` — config, typed exceptions, logging setup.
 
-Tests live in a parallel tree mirroring `src/`. Create folders when there's code to put in them, not before.
+Tests live in `backend/tests/`, a parallel tree mirroring the package's purpose folders (e.g. `pattern_mirror/api/health.py` → `tests/api/test_health.py`). Create folders when there's code to put in them, not before.
 
 ## Dependencies and tooling
 
