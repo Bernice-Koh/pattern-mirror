@@ -173,7 +173,7 @@ Over ~400 lines, ask whether the file has more than one purpose. It almost alway
 
 ### Tests mirror source
 
-`backend/src/engine/adjudicator.py` → `backend/tests/engine/test_adjudicator.py`. You should never have to ask where a file's tests are.
+`backend/src/pattern_mirror/engine/adjudicator.py` → `backend/tests/engine/test_adjudicator.py`. You should never have to ask where a file's tests are.
 
 ### Dead code
 

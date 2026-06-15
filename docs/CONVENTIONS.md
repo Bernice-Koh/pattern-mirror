@@ -8,7 +8,7 @@ The project shape these assume: a Python/FastAPI backend with a LangGraph-orches
 
 Four concerns at the root: `backend/`, `frontend/`, `docs/`, `deploy/`. Never mix.
 
-Inside `backend/src/`, separate by what code is *for*, not by file type:
+Backend code is one installable package, `pattern_mirror`, under `backend/src/` (a standard src-layout). Inside `backend/src/pattern_mirror/`, separated by what code is *for*, not by file type:
 
 - `api/` — FastAPI routers and request/response models. Thin.
 - `engine/` — the five-stage analysis pipeline and LangGraph orchestrator. Stage naming follows the design doc: intelligent components are *Agents*, deterministic components are *Modules*.
@@ -18,7 +18,7 @@ Inside `backend/src/`, separate by what code is *for*, not by file type:
 - `jobs/` — entrypoints for scheduled work (e.g. nightly dictionary-candidate summarisation).
 - `core/` — config, typed exceptions, logging setup.
 
-Tests live in a parallel tree mirroring `src/`. Create folders when there's code to put in them, not before.
+Tests live in `backend/tests/`, a parallel tree mirroring the package's purpose folders (e.g. `pattern_mirror/api/health.py` → `tests/api/test_health.py`). Create folders when there's code to put in them, not before.
 
 ## Dependencies and tooling
 
@@ -81,5 +81,6 @@ Tests live in a parallel tree mirroring `src/`. Create folders when there's code
 ## Secrets
 
 - Never commit secrets, even temporarily. `.env` is gitignored; `.env.example` (template only) is committed.
+- Each service owns its own config — `backend/.env` alongside `backend/.env.example`, and the frontend likewise — loaded relative to that service's directory. There is no shared root `.env`.
 - The Anthropic API key exists only in `.env` locally and in CI/deploy secret stores — never in code, issues, or logs.
 - Synthetic data only: no real UBS documents, employee names, or feedback ever enter this repo. MVP peer-feedback data is mocked by design.
