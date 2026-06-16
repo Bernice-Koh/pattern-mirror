@@ -44,3 +44,6 @@ deploy/blob-data/
 tmp/
 scratch/
 *.local
+
+# --- design handoff (read-only reference, never committed) ---
+pattern-mirror-design-system/
