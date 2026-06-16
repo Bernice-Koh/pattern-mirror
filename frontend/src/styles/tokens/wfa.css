@@ -1,0 +1,28 @@
+/* Pattern Mirror — WFA bias-type taxonomy colours
+   One muted colour per Workplace Fairness Act protected characteristic, plus
+   "other" for subjective or non-job-related language. Brand red is reserved for
+   actions and is never a type colour. */
+
+:root {
+  /* Protected characteristics */
+  --wfa-age: #9a6a1a;
+  --wfa-nationality: #3a6b8a;
+  --wfa-sex: #9b2d4f;
+  --wfa-marital: #7a5230;
+  --wfa-pregnancy: #a85b7a;
+  --wfa-caregiving: #5b7a8a;
+  --wfa-race: #4a5d8a;
+  --wfa-religion: #6a4a8a;
+  --wfa-language: #0f6e56;
+  --wfa-disability: #5c7c4a;
+  --wfa-mental-health: #8a6a4a;
+
+  /* Subjective / non-job-related */
+  --wfa-other: #6b6b6b;
+
+  /* Chip-background tints */
+  --wfa-sex-tint: #f4e7eb;
+  --wfa-age-tint: #f2ebdd;
+  --wfa-language-tint: #deede8;
+  --wfa-other-tint: #ececec;
+}

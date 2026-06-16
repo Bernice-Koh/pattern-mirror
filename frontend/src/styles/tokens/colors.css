@@ -1,0 +1,41 @@
+/* Pattern Mirror — colour tokens */
+
+:root {
+  /* Brand red */
+  --red-primary: #e60000;
+  --red-wordmark: #da0000;
+  --red-line: #e60000;
+  --red-tint: #fbeaea;
+  --red-press: #c20000;
+
+  /* Semantic flag accents */
+  --amber-contextual: #ad8629;
+  --amber-line: #c9a227;
+  --green-positive: #689739;
+  --purple-pattern: #844999;
+
+  /* Ink */
+  --ink: #1c1c1c;
+  --ink-muted: #5a5d5c;
+  --ink-faint: #b8b3a2;
+
+  /* Surfaces */
+  --canvas: #f7f6f3;
+  --surface: #ffffff;
+  --surface-alt: #f9f9f7;
+  --chip-track: #f0f0f0;
+  --border: #e0e0e0;
+  --border-warm: #e0dfd7;
+
+  /* Semantic aliases */
+  --text-heading: var(--ink);
+  --text-body: var(--ink);
+  --text-secondary: var(--ink-muted);
+  --text-meta: var(--ink-faint);
+  --accent: var(--red-primary);
+  --surface-card: var(--surface);
+  --surface-app: var(--canvas);
+
+  /* Keyboard focus ring */
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--red-primary);
+}
