@@ -1,0 +1,85 @@
+/* Pattern Mirror — application stylesheet entry.
+   Order matters: fonts first (its remote @import must lead), then Tailwind,
+   then the token values, then base.css in Tailwind's `base` layer so utility
+   classes win over the adopted element defaults. */
+@import './styles/tokens/fonts.css';
+@import 'tailwindcss';
+@import './styles/tokens/colors.css';
+@import './styles/tokens/typography.css';
+@import './styles/tokens/spacing.css';
+@import './styles/tokens/wfa.css';
+@import './styles/tokens/base.css' layer(base);
+
+/* Bridge the adopted tokens to Tailwind utilities. `inline` makes each utility
+   reference the token via var(), so the token files stay the source of truth. */
+@theme inline {
+  /* Brand red */
+  --color-red-primary: var(--red-primary);
+  --color-red-wordmark: var(--red-wordmark);
+  --color-red-line: var(--red-line);
+  --color-red-tint: var(--red-tint);
+  --color-red-press: var(--red-press);
+
+  /* Semantic flag accents */
+  --color-amber-contextual: var(--amber-contextual);
+  --color-amber-line: var(--amber-line);
+  --color-green-positive: var(--green-positive);
+  --color-purple-pattern: var(--purple-pattern);
+
+  /* Ink */
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+
+  /* Surfaces */
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-chip-track: var(--chip-track);
+  --color-border: var(--border);
+  --color-border-warm: var(--border-warm);
+
+  /* WFA bias-type taxonomy */
+  --color-wfa-age: var(--wfa-age);
+  --color-wfa-nationality: var(--wfa-nationality);
+  --color-wfa-sex: var(--wfa-sex);
+  --color-wfa-marital: var(--wfa-marital);
+  --color-wfa-pregnancy: var(--wfa-pregnancy);
+  --color-wfa-caregiving: var(--wfa-caregiving);
+  --color-wfa-race: var(--wfa-race);
+  --color-wfa-religion: var(--wfa-religion);
+  --color-wfa-language: var(--wfa-language);
+  --color-wfa-disability: var(--wfa-disability);
+  --color-wfa-mental-health: var(--wfa-mental-health);
+  --color-wfa-other: var(--wfa-other);
+
+  /* Font families */
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-display: var(--font-display);
+
+  /* Type scale */
+  --text-display: var(--text-display);
+  --text-title: var(--text-title);
+  --text-heading: var(--text-heading);
+  --text-subheading: var(--text-subheading);
+  --text-body: var(--text-body);
+  --text-body-sm: var(--text-body-sm);
+  --text-label: var(--text-label);
+  --text-meta: var(--text-meta);
+  --text-micro: var(--text-micro);
+  --text-eyebrow: var(--text-eyebrow);
+  --text-metric: var(--text-metric);
+  --text-metric-sm: var(--text-metric-sm);
+
+  /* Radius */
+  --radius-button: var(--radius-button);
+  --radius-card: var(--radius-card);
+  --radius-popover: var(--radius-popover);
+  --radius-pill: var(--radius-pill);
+
+  /* Shadows */
+  --shadow-ring-card: var(--ring-card);
+  --shadow-popover: var(--shadow-popover);
+  --shadow-raised: var(--shadow-raised);
+}

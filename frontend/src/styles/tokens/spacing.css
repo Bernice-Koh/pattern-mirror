@@ -1,0 +1,42 @@
+/* Pattern Mirror — spacing, radius, shadow, layout */
+
+:root {
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Radius */
+  --radius-button: 6px;
+  --radius-card: 10px;
+  --radius-popover: 8px;
+  --radius-pill: 999px;
+  --radius-bar: 5px 5px 0 0;
+
+  /* Borders */
+  --border-hairline: 1px solid var(--border);
+  --border-warm-hairline: 1px solid var(--border-warm);
+
+  /* Shadows */
+  --ring-card: inset 0 0 0 1px var(--border-warm);
+  --shadow-popover:
+    0 6px 20px rgba(28, 28, 28, 0.1), 0 0 0 1px var(--border-warm);
+  --shadow-raised: 0 1px 3px rgba(28, 28, 28, 0.06);
+
+  /* Layout */
+  --topbar-height: 64px;
+  --editor-pane: 58%;
+  --panel-pane: 42%;
+  --rail-width: 240px;
+  --content-max: 1200px;
+
+  /* Inline-flag underlines */
+  --underline-dict: 2px;
+  --underline-ai: 2px;
+}
