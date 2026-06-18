@@ -8,9 +8,12 @@ description = "Longitudinal bias-pattern analysis service for pattern-mirror."
 requires-python = ">=3.12"
 dynamic = ["version"]
 dependencies = [
+    "alembic>=1.14.0",
     "fastapi>=0.137.1",
+    "psycopg[binary]>=3.2.0",
     "pydantic-settings>=2.14.1",
     "python-dotenv>=1.2.2",
+    "sqlalchemy>=2.0.36",
     "structlog>=26.1.0",
     "uvicorn[standard]>=0.49.0",
 ]
@@ -39,10 +42,16 @@ python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["src"]
+# Alembic revisions use the framework's dynamic op/context API and are verified
+# by running them (upgrade/downgrade/check), not by strict typing.
+exclude = ["^src/pattern_mirror/db/migrations/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "db: test requires a reachable PostgreSQL database (skipped if unavailable)",
+]
 
 [dependency-groups]
 dev = [

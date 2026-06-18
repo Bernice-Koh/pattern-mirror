@@ -30,6 +30,37 @@ cd backend
    uv sync
    ```
 
+3. **Start Postgres** (from the repo root). The container provisions both the
+   dev database and the isolated test database on first boot:
+
+   ```bash
+   docker compose -f deploy/docker-compose.yml up -d
+   ```
+
+4. **Apply migrations** to reach the full schema (run from `backend/`):
+
+   ```bash
+   uv run alembic upgrade head
+   ```
+
+## Database and migrations
+
+- **Schema source of truth is the Alembic migration history**, not the model
+  classes. Models live in `src/pattern_mirror/models/`; the migrations in
+  `src/pattern_mirror/db/migrations/versions/`.
+- Generate a revision after changing models, then read and edit it before
+  committing. Use a sequential id matching the design roadmap:
+
+  ```bash
+  uv run alembic revision --autogenerate --rev-id 0002 -m "recommendations"
+  uv run alembic check          # fails if models and migrations disagree
+  uv run alembic upgrade head
+  uv run alembic downgrade -1   # verify the down path too
+  ```
+
+- Native enum *value* changes are not autodetected; add them with a hand-written
+  `op.execute("ALTER TYPE ... ADD VALUE ...")`.
+
 ## Run
 
 ```bash

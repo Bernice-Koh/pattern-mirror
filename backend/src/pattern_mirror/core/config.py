@@ -30,6 +30,17 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"]
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
+    # SQLAlchemy URL for the development/production database, e.g.
+    # postgresql+psycopg://user:pass@host:5432/pattern_mirror. Kept as a string
+    # rather than PostgresDsn so the psycopg driver suffix passes through to
+    # create_engine untouched.
+    database_url: str
+
+    # The test suite targets this database so it never collides with dev data.
+    # Unset in CI, where database_url already points at a disposable container;
+    # the suite falls back to database_url in that case.
+    test_database_url: str | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

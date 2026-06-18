@@ -1,0 +1,25 @@
+name: pattern-mirror
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: pattern-mirror-postgres
+    environment:
+      POSTGRES_USER: mirror
+      POSTGRES_PASSWORD: mirror
+      POSTGRES_DB: pattern_mirror
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Init scripts run once, on first boot of an empty data volume. This is
+      # where the isolated test database is provisioned alongside the dev one.
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mirror -d pattern_mirror"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
