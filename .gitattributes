@@ -1,0 +1,3 @@
+# Normalize all text files to LF in the repo and on checkout (overrides core.autocrlf),
+# so line endings stay consistent across OSes and local Prettier matches CI.
+* text=auto eol=lf
