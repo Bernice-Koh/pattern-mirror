@@ -83,3 +83,21 @@
   --shadow-popover: var(--shadow-popover);
   --shadow-raised: var(--shadow-raised);
 }
+
+/* ProseMirror applies a class to decorations and owns the contenteditable, so the
+   inline-flag look and the focus reset live in CSS rather than utility classes. */
+.jd-prose:focus {
+  outline: none;
+}
+
+.flag-dict {
+  border-bottom: 2px solid var(--red-line);
+  border-radius: 2px;
+  padding-bottom: 1px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.flag-dict:hover {
+  background: var(--red-tint);
+}
