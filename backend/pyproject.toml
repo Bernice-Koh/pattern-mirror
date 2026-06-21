@@ -53,10 +53,18 @@ markers = [
     "db: test requires a reachable PostgreSQL database (skipped if unavailable)",
 ]
 
+# Coverage feeds SonarCloud's quality gate; CI runs pytest with --cov and emits
+# coverage.xml. Migrations are excluded — they're verified by running, not by line cover.
+[tool.coverage.run]
+branch = true
+source = ["pattern_mirror"]
+omit = ["src/pattern_mirror/db/migrations/*"]
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
     "mypy>=2.1.0",
     "pytest>=9.1.0",
+    "pytest-cov>=7.0.0",
     "ruff>=0.15.17",
 ]

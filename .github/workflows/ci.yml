@@ -66,7 +66,15 @@ jobs:
           # Actions sets CI=true and TEST_DATABASE_URL is left unset, so the suite
           # (backend/tests/conftest.py) migrates and runs against this disposable service DB.
           DATABASE_URL: postgresql+psycopg://mirror:mirror@localhost:5432/pattern_mirror
-        run: uv run pytest
+        run: uv run pytest --cov=pattern_mirror --cov-report=xml
+
+      # Hand coverage.xml to the sonarcloud job, which runs on a separate runner.
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.xml
+          retention-days: 1
 
   frontend:
     name: frontend (lint, format, build)
@@ -96,3 +104,26 @@ jobs:
       - name: Build (tsc + vite)
         working-directory: frontend
         run: npm run build
+
+  sonarcloud:
+    name: sonarcloud (scan, quality gate)
+    runs-on: ubuntu-latest
+    # Needs the backend's coverage.xml; frontend lint/build don't feed the scan.
+    needs: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Sonar's new-code detection and blame need full history, not a shallow clone.
+          fetch-depth: 0
+
+      - name: Download backend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
