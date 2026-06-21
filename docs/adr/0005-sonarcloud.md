@@ -72,3 +72,27 @@ LOC, so the scan and gate cost nothing.
   coverage-and-maintainability gate the issue specifies, and #18 names SonarCloud outright.
 - **Keep the default "Sonar way" gate** — rejected: its new-code coverage condition would
   fail on test-less frontend PRs, training the team to ignore the gate.
+
+## Correction (2026-06-21)
+
+The "custom quality gate with the coverage condition removed" decision above could **not be
+implemented**: on SonarCloud's Free plan, custom quality gates can be created but **cannot be
+assigned to a project** — assignment is a paid feature. The project is therefore locked to the
+built-in **"Sonar way"** gate, whose conditions on new code *include* `Coverage ≥ 80%`.
+
+What this changes:
+
+- **The coverage condition is always active.** There is no free-tier way to drop it, so the
+  "defer coverage, ratchet later" framing is moot — Sonar way enforces 80% new-code coverage
+  from the start, for backend and frontend alike.
+- **The gate stays strict in CI** (`sonar.qualitygate.wait=true`, unchanged): a PR whose new
+  code falls below 80% coverage reds the `sonarcloud` job. This is acceptable because the
+  frontend test foundation (#35) makes frontend coverage achievable, and because the gate is
+  advisory in effect — the free private repo still can't *enforce* required checks (ADR 0004),
+  so "don't merge red" remains the convention.
+- **The "Keep the default Sonar way gate" alternative above is, in effect, what we run** — not
+  by choice, but because the free tier allows nothing else. The alarm-fatigue risk is real and
+  is mitigated only by actually writing tests for new code.
+
+Net: the engine-side scope of #18 is delivered with the built-in gate; #35 supplies the
+frontend testing capability that the (unavoidable) coverage condition assumes.
