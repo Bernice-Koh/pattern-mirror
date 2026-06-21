@@ -77,7 +77,7 @@ jobs:
           retention-days: 1
 
   frontend:
-    name: frontend (lint, format, build)
+    name: frontend (lint, format, test, build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,15 +101,33 @@ jobs:
         working-directory: frontend
         run: npm run format:check
 
+      - name: Tests (vitest)
+        working-directory: frontend
+        run: npm run test:coverage
+
+      # vitest writes lcov paths relative to frontend/; Sonar resolves them from the
+      # repo root. Rebase so coverage maps to the real files.
+      - name: Rebase coverage paths for Sonar
+        working-directory: frontend
+        run: sed -i 's|^SF:src/|SF:frontend/src/|' coverage/lcov.info
+
       - name: Build (tsc + vite)
         working-directory: frontend
         run: npm run build
 
+      # Hand lcov.info to the sonarcloud job, which runs on a separate runner.
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/lcov.info
+          retention-days: 1
+
   sonarcloud:
     name: sonarcloud (scan, quality gate)
     runs-on: ubuntu-latest
-    # Needs the backend's coverage.xml; frontend lint/build don't feed the scan.
-    needs: backend
+    # Waits on both jobs' coverage artifacts before scanning.
+    needs: [backend, frontend]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -121,6 +139,12 @@ jobs:
         with:
           name: backend-coverage
           path: backend
+
+      - name: Download frontend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
 
       - name: SonarCloud scan
         uses: SonarSource/sonarqube-scan-action@v5
