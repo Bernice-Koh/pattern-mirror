@@ -145,7 +145,7 @@ def upgrade() -> None:
         "subjects",
         sa.Column("id", sa.Uuid(), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("subject_type", subject_type, nullable=False),
-        sa.Column("display_name", sa.String(), nullable=False),
+        sa.Column("legal_name", sa.String(), nullable=False),
         sa.Column("external_ref", sa.String(), nullable=True),
         sa.Column("gender", sa.String(), nullable=True),
         sa.Column("age_band", sa.String(), nullable=True),

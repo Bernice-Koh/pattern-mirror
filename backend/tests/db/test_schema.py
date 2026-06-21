@@ -108,7 +108,7 @@ def test_orm_round_trip_links_the_engine_graph(db_session: Session) -> None:
         email="mock.manager@example.test",
     )
     manager.roles.append(UserRoleAssignment(role=UserRole.manager))
-    candidate = Subject(subject_type=SubjectType.candidate, display_name="Mock Candidate")
+    candidate = Subject(subject_type=SubjectType.candidate, legal_name="Mock Candidate")
     document = Document(owner=manager, doc_type=DocType.feedback, subject=candidate, content="text")
     run = AnalysisRun(document=document, trigger=AnalysisTrigger.submit, content_hash="0" * 64)
     flag = Flag(

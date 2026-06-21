@@ -68,7 +68,7 @@ class Subject(TimestampMixin, Base):
 
     id: Mapped[uuid_pk]
     subject_type: Mapped[SubjectType] = mapped_column(subject_type_enum)
-    display_name: Mapped[str] = mapped_column(String)
+    legal_name: Mapped[str] = mapped_column(String)
     external_ref: Mapped[str | None] = mapped_column(String)
     gender: Mapped[str | None] = mapped_column(String)
     age_band: Mapped[str | None] = mapped_column(String)
