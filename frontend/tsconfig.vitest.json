@@ -1,0 +1,12 @@
+{
+  // Type-checks test files and the test setup, which tsconfig.app.json excludes.
+  // Kept out of `tsc -b` so the production build never pulls in test-only types.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.vitest.tsbuildinfo",
+    "types": ["vite/client", "node"]
+  },
+  "include": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"],
+  // tsconfig.app.json excludes these globs; clear that here so they are the inputs.
+  "exclude": []
+}
