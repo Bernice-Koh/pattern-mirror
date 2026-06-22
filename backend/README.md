@@ -30,6 +30,10 @@ cd backend
    uv sync
    ```
 
+   This also installs the spaCy English model (`en_core_web_sm`); it's pinned as a
+   dependency in `pyproject.toml`, so there's no separate `python -m spacy download`
+   step and CI resolves the exact same model version from the lockfile.
+
 3. **Start Postgres** (from the repo root). The container provisions both the
    dev database and the isolated test database on first boot:
 
