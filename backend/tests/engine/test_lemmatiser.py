@@ -24,5 +24,22 @@ def test_text_without_content_tokens_yields_empty_key() -> None:
     assert lemma_key("!!!") == ""
 
 
+def test_empty_string_yields_empty_key() -> None:
+    assert lemma_key("") == ""
+
+
+def test_whitespace_variants_collapse_to_one_key() -> None:
+    keys = {
+        lemma_key("digital natives"),
+        lemma_key("digital  natives"),
+        lemma_key("  digital natives  "),
+    }
+    assert keys == {"digital native"}
+
+
+def test_distinct_terms_do_not_collapse() -> None:
+    assert lemma_key("manage") != lemma_key("manager")
+
+
 def test_lemmatise_drops_punctuation() -> None:
     assert lemmatise("Aggressive!") == ["aggressive"]
