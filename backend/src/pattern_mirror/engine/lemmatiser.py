@@ -5,11 +5,21 @@ document agree on inflected and cased forms. No DB, no LLM.
 """
 
 import spacy
+from spacy.language import Language
 
 # Loaded once at import: spacy.load reads the model off disk and builds the
 # pipeline, which is expensive to repeat per call. parser/ner are unused here;
 # the tagger stays because the rule-based lemmatiser needs POS tags.
 _NLP = spacy.load("en_core_web_sm", disable=["parser", "ner"])
+
+
+def get_nlp() -> Language:
+    """Return the shared spaCy pipeline so other engine modules reuse one model load.
+
+    Returns:
+        The single pipeline this module loaded at import; callers must not mutate it.
+    """
+    return _NLP
 
 
 def lemmatise(text: str) -> list[str]:
