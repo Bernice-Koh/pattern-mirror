@@ -9,3 +9,7 @@ type at the point of failure.
 
 class PatternMirrorError(Exception):
     """Base class for all pattern-mirror domain errors."""
+
+
+class SeedDataMissingError(PatternMirrorError):
+    """Required seed data (e.g. the demo manager) is absent from the database."""

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from pattern_mirror import __version__
-from pattern_mirror.api import health
+from pattern_mirror.api import analyze, health
 from pattern_mirror.core.config import get_settings
 from pattern_mirror.core.errors import PatternMirrorError
 from pattern_mirror.core.logging import configure_logging
@@ -63,4 +63,5 @@ def create_app() -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
     app.add_exception_handler(PatternMirrorError, _handle_domain_error)
     app.include_router(health.router)
+    app.include_router(analyze.router)
     return app
