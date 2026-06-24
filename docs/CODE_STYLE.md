@@ -45,15 +45,15 @@ Every function signature has parameter and return type hints. Modern union synta
 Google-style docstrings on every public function and class. Module docstring at the top of every file: one to three sentences on purpose.
 
 ```python
-def adjudicate_flags(flags: list[CandidateFlag], source_text: str) -> list[CandidateFlag]:
-    """Drop any flag whose claimed span does not appear verbatim in the source.
+def adjudicate_flags(flags: list[CandidateFlag], source_text: str) -> AdjudicationResult:
+    """Drop any flag whose claimed span is not verbatim in the source; keep the rest.
 
     Args:
-        flags: Candidate flags from the LLM contextual pass.
+        flags: Candidate flags from the dictionary and contextual stages.
         source_text: The exact document text the manager submitted.
 
     Returns:
-        Only the flags whose spans are literally present in source_text.
+        The verified survivors and the rejected flags, each carrying its reason.
     """
 ```
 
