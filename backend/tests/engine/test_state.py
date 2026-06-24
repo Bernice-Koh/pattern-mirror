@@ -75,11 +75,10 @@ def test_log_transition_records_document_id_and_the_delta() -> None:
     assert entry["stage"] == "dictionary"
     assert entry["document_id"] == str(document_id)
     assert entry["channels"] == ["candidate_flags"]
-    assert entry["candidate_flags_added"] == 2
-    assert entry["flag_spans"] == ["aggressive", "culture fit"]
+    assert entry["delta_sizes"] == {"candidate_flags": 2}
 
 
-def test_log_transition_on_a_scores_only_update_reports_no_added_flags() -> None:
+def test_log_transition_reports_each_changed_channel_size() -> None:
     update: StateUpdate = {"judge_scores": []}
 
     with capture_logs() as logs:
@@ -87,4 +86,4 @@ def test_log_transition_on_a_scores_only_update_reports_no_added_flags() -> None
 
     (entry,) = logs
     assert entry["channels"] == ["judge_scores"]
-    assert entry["candidate_flags_added"] == 0
+    assert entry["delta_sizes"] == {"judge_scores": 0}
