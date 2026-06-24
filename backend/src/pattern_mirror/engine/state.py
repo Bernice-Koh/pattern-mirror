@@ -56,10 +56,10 @@ class EngineState(TypedDict):
 
     Channels differ in how updates merge. ``candidate_flags`` *accumulates*: the
     dictionary and contextual stages each append, via ``accumulate_candidate_flags``.
-    Every other channel *overwrites* (LangGraph's default last-value-wins) — notably
-    ``judge_scores``, which the Judge replaces wholesale. The identity and inputs
-    (``analysis_run_id``, ``document_id``, ``document_text``, ``doc_type``,
-    ``region_code``) are set at init and not changed by nodes.
+    Every other channel *overwrites* (LangGraph's default last-value-wins): the Adjudicator
+    replaces ``verified_flags`` with its survivors, and the Judge replaces ``judge_scores``
+    wholesale. The identity and inputs (``analysis_run_id``, ``document_id``,
+    ``document_text``, ``doc_type``, ``region_code``) are set at init and not changed.
     """
 
     analysis_run_id: uuid.UUID
@@ -68,6 +68,7 @@ class EngineState(TypedDict):
     doc_type: DocType
     region_code: str
     candidate_flags: Annotated[list[CandidateFlag], accumulate_candidate_flags]
+    verified_flags: list[CandidateFlag]
     judge_scores: list[JudgeScore]
     drift_reference: DriftReference | None
 
@@ -80,8 +81,32 @@ class StateUpdate(TypedDict, total=False):
     """
 
     candidate_flags: list[CandidateFlag]
+    verified_flags: list[CandidateFlag]
     judge_scores: list[JudgeScore]
     drift_reference: DriftReference | None
+
+
+def initial_state(
+    *,
+    analysis_run_id: uuid.UUID,
+    document_id: uuid.UUID,
+    document_text: str,
+    doc_type: DocType,
+    region_code: str,
+    drift_reference: DriftReference | None = None,
+) -> EngineState:
+    """Build the starting state for a run: identity and inputs set, channels empty."""
+    return EngineState(
+        analysis_run_id=analysis_run_id,
+        document_id=document_id,
+        document_text=document_text,
+        doc_type=doc_type,
+        region_code=region_code,
+        candidate_flags=[],
+        verified_flags=[],
+        judge_scores=[],
+        drift_reference=drift_reference,
+    )
 
 
 def log_transition(stage: str, document_id: uuid.UUID, update: StateUpdate) -> None:
@@ -92,12 +117,13 @@ def log_transition(stage: str, document_id: uuid.UUID, update: StateUpdate) -> N
         document_id: The run's document, the correlation key for the audit trail.
         update: The partial update the node returned, whose channels are the delta.
     """
-    added_flags = update.get("candidate_flags") or []
+    delta_sizes = {
+        channel: len(value) for channel, value in update.items() if isinstance(value, list)
+    }
     _log.info(
         "engine.transition",
         stage=stage,
         document_id=str(document_id),
         channels=sorted(update),
-        candidate_flags_added=len(added_flags),
-        flag_spans=[flag.raw_span for flag in added_flags],
+        delta_sizes=delta_sizes,
     )
