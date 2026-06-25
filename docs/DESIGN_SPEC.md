@@ -1,10 +1,11 @@
 # The Pattern Mirror — Design Specification
 
-> **Status: captured baseline.** This is the Phase 4 design specification from the
-> programme's design phase, and the product source of truth referenced by
-> [CLAUDE.md](../CLAUDE.md) and [CONVENTIONS.md](CONVENTIONS.md). Treat it as a frozen
-> baseline: where an [ADR](adr/) conflicts with this document, **the ADR supersedes it**.
-> Record changes as new ADRs rather than editing this file, so the decision trail stays intact.
+> **Status: living product specification.** Originating from the Phase 4 design phase, this is
+> the product source of truth referenced by [CLAUDE.md](../CLAUDE.md) and
+> [CONVENTIONS.md](CONVENTIONS.md). It is maintained as a living document — edit it as the product
+> evolves, with git history as the decision trail. Where an [ADR](adr/) conflicts with this
+> document, **the ADR supersedes it**: ADRs remain the record for architecture decisions and their
+> trade-offs, while this file describes the product itself.
 
 ---
 
@@ -67,6 +68,8 @@ Example output:
 
 The manager is not blocked. They see this before deciding whether to submit.
 
+The candidate's resume is available within Checkpoint as a download link, for reference while reviewing the draft. See Section 5 for where resume files are stored.
+
 #### View 3 — Pattern Dashboard
 
 The longitudinal differentiator. The dashboard surfaces two layers of self-reflection content — patterns in the manager's writing, and patterns in the manager's decisions about flags. Both are gated by statistical significance (Fisher's exact test where applicable). Patterns that could plausibly be coincidence do not surface.
@@ -90,6 +93,8 @@ The manager's writing surface for promotion justifications. Triggered when the m
 Bias in the language used (same engine as JD Studio and Feedback Checkpoint). Drift — whether the writeup's framing of the employee is consistent with historical peer feedback for that employee.
 
 Same non-blocking model as Feedback Checkpoint. The manager sees the analysis before deciding whether to submit. See Section 4 for architectural detail on the promotion workflow, including how historical peer feedback is mocked in MVP.
+
+The employee's resume / CV is available within the writeup view as a download link, for reference while drafting. See Section 5 for where resume files are stored.
 
 ---
 
@@ -195,6 +200,8 @@ Persisted data is organised in three tiers:
 - Manager-level acceptance rate, bias category trends, drift over time
 
 **Privacy frame.** Persistence is for the manager's own Pattern Dashboard and for audit. It does not change the privacy contract: individual writing remains visible only to the manager. HR continues to see aggregated trends only, never individual content.
+
+**Storage medium.** Document text (JDs, interview feedback, promotion writeups), flags, dismissals, and all metadata are stored relationally in PostgreSQL — they are short-form, queryable, and read by the engine on every run. The only binary artefacts are candidate / employee **resume-CV files**, which the engine does not analyse as text; these are stored in blob storage (Azure Blob in production; a local-disk or Azurite stand-in in dev), with Postgres holding the blob reference and metadata. Resume files surface to the manager as download links in Feedback Checkpoint and Promotion Writeup. Broader blob usage — RAG over historical documents, the rejected-resume leaderboard (Section 11) — remains post-MVP.
 
 ---
 
