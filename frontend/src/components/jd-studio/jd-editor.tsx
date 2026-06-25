@@ -57,8 +57,8 @@ export function JdEditor({
 
   const { data } = useQuery({
     queryKey: ['analyze', docType, debouncedText],
-    queryFn: () =>
-      analyzeDocument({ doc_type: docType, content: debouncedText }),
+    queryFn: ({ signal }) =>
+      analyzeDocument({ doc_type: docType, content: debouncedText }, signal),
     enabled: debouncedText.length > 0,
     placeholderData: keepPreviousData,
   })

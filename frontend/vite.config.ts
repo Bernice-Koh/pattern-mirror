@@ -12,6 +12,13 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // Forward API calls to the backend so the browser sees one origin (no CORS in dev).
+  // One entry per backend path the frontend calls; add the next as endpoints land.
+  server: {
+    proxy: {
+      '/analyze': 'http://localhost:8000',
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
