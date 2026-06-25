@@ -46,5 +46,8 @@ tmp/
 scratch/
 *.local
 
+# --- local issue snapshot (working reference, not committed) ---
+ISSUES.md
+
 # --- design handoff (read-only reference, never committed) ---
 pattern-mirror-design-system/
