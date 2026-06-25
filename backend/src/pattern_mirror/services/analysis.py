@@ -16,6 +16,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.dictionary import load_active_rules, match_dictionary
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.models.documents import AnalysisRun, Document
@@ -33,6 +34,53 @@ class AnalysisResult:
     document: Document
     run: AnalysisRun
     flags: list[Flag]
+
+
+def build_flag(
+    *,
+    document_id: uuid.UUID,
+    analysis_run_id: uuid.UUID,
+    candidate: CandidateFlag,
+    content: str,
+) -> Flag:
+    """Build a persistable ``Flag`` row from a candidate, with its full provenance.
+
+    Shared by the synchronous analyze path and the streaming pipeline so both write
+    flags the same way. The sentence fingerprint is recomputed from ``content`` and the
+    span offsets so dismissals can later match this flag by signature (#56).
+
+    Args:
+        document_id: The document the flag belongs to.
+        analysis_run_id: The run that produced the flag.
+        candidate: The verified candidate flag from the engine; offsets and lemma key
+            present (dictionary-origin flags always carry them).
+        content: The exact document text the offsets index into.
+
+    Returns:
+        An unpersisted ``Flag`` carrying the candidate's span, provenance, and fingerprint.
+    """
+    assert (
+        candidate.start_offset is not None
+        and candidate.end_offset is not None
+        and candidate.lemma_key is not None
+    )
+    return Flag(
+        document_id=document_id,
+        analysis_run_id=analysis_run_id,
+        source_stage=candidate.source_stage,
+        dictionary_entry_id=candidate.dictionary_entry_id,
+        citation_id=candidate.citation_id,
+        category=candidate.category,
+        scope=FlagScope.general,
+        raw_span=candidate.raw_span,
+        normalised_span=candidate.lemma_key,
+        sentence_fingerprint=compute_sentence_fingerprint(
+            content, candidate.start_offset, candidate.end_offset
+        ),
+        start_offset=candidate.start_offset,
+        end_offset=candidate.end_offset,
+        rationale={"explanation": candidate.explanation},
+    )
 
 
 def analyze_document(
@@ -68,29 +116,12 @@ def analyze_document(
 
     rules = load_active_rules(session, _REGION_CODE)
     for candidate in match_dictionary(content, rules):
-        # Dictionary candidates always carry offsets and a lemma key; narrow for mypy.
-        assert (
-            candidate.start_offset is not None
-            and candidate.end_offset is not None
-            and candidate.lemma_key is not None
-        )
         session.add(
-            Flag(
+            build_flag(
                 document_id=document.id,
                 analysis_run_id=run.id,
-                source_stage=candidate.source_stage,
-                dictionary_entry_id=candidate.dictionary_entry_id,
-                citation_id=candidate.citation_id,
-                category=candidate.category,
-                scope=FlagScope.general,
-                raw_span=candidate.raw_span,
-                normalised_span=candidate.lemma_key,
-                sentence_fingerprint=compute_sentence_fingerprint(
-                    content, candidate.start_offset, candidate.end_offset
-                ),
-                start_offset=candidate.start_offset,
-                end_offset=candidate.end_offset,
-                rationale={"explanation": candidate.explanation},
+                candidate=candidate,
+                content=content,
             )
         )
 
