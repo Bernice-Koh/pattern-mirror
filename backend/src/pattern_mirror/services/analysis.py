@@ -19,9 +19,10 @@ from sqlalchemy.orm import Session, selectinload
 from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.dictionary import load_active_rules, match_dictionary
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
+from pattern_mirror.engine.lemmatiser import lemma_key
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
-from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType, FlagScope
+from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
 
 _REGION_CODE = "SG"
 _log = structlog.get_logger("pattern_mirror.services.analysis")
@@ -52,17 +53,18 @@ def build_flag(
     Args:
         document_id: The document the flag belongs to.
         analysis_run_id: The run that produced the flag.
-        candidate: The verified candidate flag from the engine; offsets and lemma key
-            present (dictionary-origin flags always carry them).
+        candidate: A verified candidate flag from the engine. Offsets are present (the
+            Adjudicator resolves them for every survivor); ``lemma_key`` is present only
+            on dictionary flags, so for contextual flags the normalised span is derived
+            from ``raw_span``.
         content: The exact document text the offsets index into.
 
     Returns:
         An unpersisted ``Flag`` carrying the candidate's span, provenance, and fingerprint.
     """
-    assert (
-        candidate.start_offset is not None
-        and candidate.end_offset is not None
-        and candidate.lemma_key is not None
+    assert candidate.start_offset is not None and candidate.end_offset is not None
+    normalised_span = (
+        candidate.lemma_key if candidate.lemma_key is not None else lemma_key(candidate.raw_span)
     )
     return Flag(
         document_id=document_id,
@@ -71,9 +73,9 @@ def build_flag(
         dictionary_entry_id=candidate.dictionary_entry_id,
         citation_id=candidate.citation_id,
         category=candidate.category,
-        scope=FlagScope.general,
+        scope=candidate.scope,
         raw_span=candidate.raw_span,
-        normalised_span=candidate.lemma_key,
+        normalised_span=normalised_span,
         sentence_fingerprint=compute_sentence_fingerprint(
             content, candidate.start_offset, candidate.end_offset
         ),

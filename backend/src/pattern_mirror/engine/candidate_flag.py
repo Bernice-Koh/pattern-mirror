@@ -10,22 +10,27 @@ is the durable record for flags from every stage, so this shape persists without
 import uuid
 from dataclasses import dataclass
 
-from pattern_mirror.models.enums import BiasCategory, FlagSourceStage, Severity
+from pattern_mirror.models.enums import BiasCategory, FlagScope, FlagSourceStage
 
 
 @dataclass(frozen=True)
 class CandidateFlag:
     """One in-memory bias detection: a source span plus its full provenance.
 
-    The dictionary stage populates every field. Fields that a later stage may not know
-    (offsets a contextual flag only gains at adjudication; a dictionary rule or its
-    citation, absent on LLM-only flags) are optional, matching the ``flags`` table.
+    The dictionary stage populates every field. Fields a later stage may not know are
+    optional, matching the nullable columns on the ``flags`` table: offsets a contextual
+    flag only gains at adjudication, and a dictionary rule, its citation, and a lemma key
+    are all absent on LLM-only contextual flags.
+
+    ``scope`` distinguishes *general* (dictionary-eligible) from *role-specific* (LLM-only)
+    candidates — the trigger input for the Dictionary Growth loop (design spec §3). The
+    dictionary stage produces only general flags, so it is the default.
     """
 
     source_stage: FlagSourceStage
     category: BiasCategory
-    severity: Severity
     raw_span: str
+    scope: FlagScope = FlagScope.general
     start_offset: int | None = None
     end_offset: int | None = None
     citation_id: uuid.UUID | None = None

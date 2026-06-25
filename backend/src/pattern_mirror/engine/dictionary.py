@@ -2,7 +2,7 @@
 
 Region-scoped active rules are matched against a document's lemmas; each match becomes
 a ``CandidateFlag`` carrying a verbatim span and full provenance (rule, citation,
-category, severity) for the later stages to verify and persist. Loading and matching are
+category) for the later stages to verify and persist. Loading and matching are
 split so the matcher is a pure function over plain rules: region and active scoping are
 applied once at the DB boundary (``load_active_rules``), and the matcher trusts what it
 is given. Persisting the resulting flags and the analyze endpoint are owned by #21.
@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.tokenisation import lemmatise_with_offsets
 from pattern_mirror.models.dictionary import Dictionary
-from pattern_mirror.models.enums import BiasCategory, FlagSourceStage, Severity
+from pattern_mirror.models.enums import BiasCategory, FlagSourceStage
 
 
 @dataclass(frozen=True)
@@ -28,7 +28,6 @@ class DictionaryRule:
     id: uuid.UUID
     lemma_key: str
     category: BiasCategory
-    severity: Severity
     citation_id: uuid.UUID
     explanation: str
 
@@ -57,12 +56,39 @@ def load_active_rules(session: Session, region_code: str) -> list[DictionaryRule
             id=entry.id,
             lemma_key=entry.lemma_key,
             category=entry.category,
-            severity=entry.severity,
             citation_id=entry.citation_id,
             explanation=entry.explanation,
         )
         for entry in entries
     ]
+
+
+def load_category_citations(session: Session, region_code: str) -> dict[BiasCategory, uuid.UUID]:
+    """Map each category in the active lexicon to a representative TAFEP citation.
+
+    This is the citation floor a contextual flag attaches (ADR 0006: every flag carries a
+    citation by reference, never the model's word). A contextual flag of category X reuses
+    the curated TAFEP citation that an active dictionary entry of X already cites. A category
+    with no active entry has no floor, and the Contextual Pass suppresses flags it cannot
+    cite rather than surfacing them uncited.
+
+    Args:
+        session: An open database session.
+        region_code: The jurisdiction whose lexicon applies (``"SG"`` for the MVP).
+
+    Returns:
+        One citation id per category present in the region's active lexicon.
+    """
+    rows = session.execute(
+        select(Dictionary.category, Dictionary.citation_id).where(
+            Dictionary.region_code == region_code,
+            Dictionary.active.is_(True),
+        )
+    ).all()
+    floor: dict[BiasCategory, uuid.UUID] = {}
+    for category, citation_id in rows:
+        floor.setdefault(category, citation_id)
+    return floor
 
 
 def match_dictionary(text: str, rules: Sequence[DictionaryRule]) -> list[CandidateFlag]:
@@ -106,7 +132,6 @@ def match_dictionary(text: str, rules: Sequence[DictionaryRule]) -> list[Candida
                 CandidateFlag(
                     source_stage=FlagSourceStage.dictionary,
                     category=rule.category,
-                    severity=rule.severity,
                     raw_span=raw_span,
                     start_offset=start,
                     end_offset=end,

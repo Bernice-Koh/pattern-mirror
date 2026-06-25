@@ -15,26 +15,21 @@ from sqlalchemy.orm import Session
 from pattern_mirror.engine.dictionary import (
     DictionaryRule,
     load_active_rules,
+    load_category_citations,
     match_dictionary,
 )
 from pattern_mirror.engine.lemmatiser import lemma_key
 from pattern_mirror.models.dictionary import Dictionary
-from pattern_mirror.models.enums import BiasCategory, FlagSourceStage, Severity
+from pattern_mirror.models.enums import BiasCategory, FlagSourceStage
 from pattern_mirror.models.reference import Citation
 
 
-def _rule(
-    term: str,
-    *,
-    category: BiasCategory = BiasCategory.gender,
-    severity: Severity = Severity.high,
-) -> DictionaryRule:
+def _rule(term: str, *, category: BiasCategory = BiasCategory.gender) -> DictionaryRule:
     """A rule keyed exactly as the seed would key ``term``, with synthetic ids."""
     return DictionaryRule(
         id=uuid.uuid4(),
         lemma_key=lemma_key(term),
         category=category,
-        severity=severity,
         citation_id=uuid.uuid4(),
         explanation=f"Synthetic rule for {term!r}.",
     )
@@ -50,14 +45,13 @@ def test_inflected_and_cased_forms_match_the_same_rule() -> None:
     assert lower[0].dictionary_entry_id == rule.id == shouted[0].dictionary_entry_id
 
 
-def test_a_flag_carries_offsets_category_severity_and_citation() -> None:
-    rule = _rule("aggressive", category=BiasCategory.gender, severity=Severity.high)
+def test_a_flag_carries_offsets_category_and_citation() -> None:
+    rule = _rule("aggressive", category=BiasCategory.gender)
 
     flag = match_dictionary("She is aggressive.", [rule])[0]
 
     assert flag.source_stage is FlagSourceStage.dictionary
     assert flag.category is BiasCategory.gender
-    assert flag.severity is Severity.high
     assert flag.citation_id == rule.citation_id
     assert flag.raw_span == "aggressive"
     assert flag.start_offset is not None and flag.end_offset is not None
@@ -80,7 +74,7 @@ def test_matching_makes_no_anthropic_call(monkeypatch: pytest.MonkeyPatch) -> No
         raise AssertionError("Stage 1 must not call the LLM")
 
     monkeypatch.setattr(anthropic.Anthropic, "__init__", _forbid, raising=False)
-    rules = [_rule("digital native", category=BiasCategory.age, severity=Severity.medium)]
+    rules = [_rule("digital native", category=BiasCategory.age)]
 
     flags = match_dictionary("We seek a digital native.", rules)
 
@@ -91,7 +85,7 @@ def test_five_hundred_word_document_is_matched() -> None:
     filler = "We value clarity and teamwork across the whole organisation every day. " * 60
     text = f"{filler}We seek a digital native."
     assert len(text.split()) > 500
-    rules = [_rule("digital native", category=BiasCategory.age, severity=Severity.medium)]
+    rules = [_rule("digital native", category=BiasCategory.age)]
 
     flags = match_dictionary(text, rules)
 
@@ -101,7 +95,7 @@ def test_five_hundred_word_document_is_matched() -> None:
 
 def test_raw_span_is_verbatim_at_its_offsets() -> None:
     text = "We seek a digital native."
-    rule = _rule("digital native", category=BiasCategory.age, severity=Severity.medium)
+    rule = _rule("digital native", category=BiasCategory.age)
 
     flag = match_dictionary(text, [rule])[0]
 
@@ -111,7 +105,7 @@ def test_raw_span_is_verbatim_at_its_offsets() -> None:
 
 def test_repeated_span_resolves_to_each_position() -> None:
     text = "A bachelor seeks a bachelor."
-    rule = _rule("bachelor", category=BiasCategory.family_status, severity=Severity.medium)
+    rule = _rule("bachelor", category=BiasCategory.family_status)
 
     flags = match_dictionary(text, [rule])
 
@@ -122,7 +116,7 @@ def test_repeated_span_resolves_to_each_position() -> None:
 
 
 def test_multiword_phrase_spans_all_its_words() -> None:
-    rule = _rule("digital native", category=BiasCategory.age, severity=Severity.medium)
+    rule = _rule("digital native", category=BiasCategory.age)
 
     flag = match_dictionary("They prefer digital natives here.", [rule])[0]
 
@@ -131,7 +125,7 @@ def test_multiword_phrase_spans_all_its_words() -> None:
 
 def test_hyphenated_form_matches_across_internal_punctuation() -> None:
     text = "Only non-singaporean staff need apply."
-    rule = _rule("non-singaporean", category=BiasCategory.nationality, severity=Severity.high)
+    rule = _rule("non-singaporean", category=BiasCategory.nationality)
 
     flag = match_dictionary(text, [rule])[0]
 
@@ -140,8 +134,8 @@ def test_hyphenated_form_matches_across_internal_punctuation() -> None:
 
 
 def test_longest_match_wins_for_overlapping_rules() -> None:
-    short = _rule("young", category=BiasCategory.age, severity=Severity.high)
-    phrase = _rule("young professional", category=BiasCategory.age, severity=Severity.medium)
+    short = _rule("young", category=BiasCategory.age)
+    phrase = _rule("young professional", category=BiasCategory.age)
 
     flags = match_dictionary("We want a young professional.", [short, phrase])
 
@@ -151,8 +145,8 @@ def test_longest_match_wins_for_overlapping_rules() -> None:
 
 
 def test_shorter_rule_still_matches_outside_the_phrase() -> None:
-    short = _rule("young", category=BiasCategory.age, severity=Severity.high)
-    phrase = _rule("young professional", category=BiasCategory.age, severity=Severity.medium)
+    short = _rule("young", category=BiasCategory.age)
+    phrase = _rule("young professional", category=BiasCategory.age)
 
     flags = match_dictionary("We want someone young.", [short, phrase])
 
@@ -162,8 +156,8 @@ def test_shorter_rule_still_matches_outside_the_phrase() -> None:
 
 
 def test_one_lemma_key_under_two_categories_yields_one_flag_each() -> None:
-    as_age = _rule("mature", category=BiasCategory.age, severity=Severity.medium)
-    as_gender = _rule("mature", category=BiasCategory.gender, severity=Severity.low)
+    as_age = _rule("mature", category=BiasCategory.age)
+    as_gender = _rule("mature", category=BiasCategory.gender)
 
     flags = match_dictionary("We prefer a mature candidate.", [as_age, as_gender])
 
@@ -192,7 +186,6 @@ def test_load_active_rules_excludes_other_regions(db_session: Session) -> None:
             category=BiasCategory.age,
             term="region probe",
             lemma_key="region probe",
-            severity=Severity.low,
             citation_id=citation_id,
             explanation="A Malaysia-scoped entry used only to prove region filtering.",
         )
@@ -222,6 +215,17 @@ def test_load_active_rules_excludes_inactive_entries(db_session: Session) -> Non
 
 
 @pytest.mark.db
+def test_load_category_citations_covers_the_seeded_categories(db_session: Session) -> None:
+    floor = load_category_citations(db_session, "SG")
+
+    # Every category present in the active SG lexicon has a floor citation (ADR 0006).
+    seeded = {rule.category for rule in load_active_rules(db_session, "SG")}
+    assert seeded
+    assert set(floor) == seeded
+    assert all(isinstance(citation_id, uuid.UUID) for citation_id in floor.values())
+
+
+@pytest.mark.db
 def test_seeded_sg_dictionary_flags_a_known_phrase(db_session: Session) -> None:
     rules = load_active_rules(db_session, "SG")
 
@@ -229,5 +233,4 @@ def test_seeded_sg_dictionary_flags_a_known_phrase(db_session: Session) -> None:
 
     assert len(flags) == 1
     assert flags[0].category is BiasCategory.age
-    assert flags[0].severity is Severity.medium
     assert flags[0].raw_span == "digital native"
