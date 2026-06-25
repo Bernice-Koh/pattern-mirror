@@ -9,8 +9,10 @@ requires-python = ">=3.12"
 dynamic = ["version"]
 dependencies = [
     "alembic>=1.14.0",
+    "anthropic>=0.112.0",
     "en-core-web-sm",
     "fastapi>=0.137.1",
+    "instructor>=1.15.3",
     "langgraph>=1.2.6",
     "psycopg[binary]>=3.2.0",
     "pydantic-settings>=2.14.1",

@@ -13,9 +13,22 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.orm import Session
 
+from pattern_mirror.core.config import get_settings
 from pattern_mirror.engine.adjudicator import adjudicate_flags
-from pattern_mirror.engine.dictionary import load_active_rules, match_dictionary
+from pattern_mirror.engine.contextual_pass import (
+    StructuredCompletionClient,
+    estimate_cost_usd,
+    run_contextual_pass,
+    to_candidate_flags,
+)
+from pattern_mirror.engine.dictionary import (
+    load_active_rules,
+    load_category_citations,
+    match_dictionary,
+)
 from pattern_mirror.engine.state import EngineState, StateUpdate, log_transition
+from pattern_mirror.models.enums import AgentName
+from pattern_mirror.services.agent_runs import record_agent_run
 
 _log = structlog.get_logger("pattern_mirror.engine.orchestrator")
 
@@ -56,6 +69,53 @@ def _passthrough_node(stage: str) -> EngineNode:
     return node
 
 
+def _build_contextual_node(
+    session: Session, client: StructuredCompletionClient, model: str
+) -> EngineNode:
+    """Build the real Contextual Pass node: a Sonnet 4.6 Agent logged to ``agent_runs``.
+
+    The node calls the Agent, records the run (input/output/cost/latency), and appends the
+    proposed flags to the candidate channel with contextual provenance. Spans are offset-less
+    here; the Adjudicator resolves and verifies them downstream.
+    """
+
+    def node(state: EngineState) -> StateUpdate:
+        run = run_contextual_pass(
+            client,
+            document_text=state["document_text"],
+            doc_type=state["doc_type"],
+            model=model,
+        )
+        record_agent_run(
+            session,
+            agent_name=AgentName.contextual_pass,
+            model=model,
+            input={"doc_type": state["doc_type"].value, "document_text": state["document_text"]},
+            output=run.result.model_dump(mode="json"),
+            document_id=state["document_id"],
+            analysis_run_id=state["analysis_run_id"],
+            prompt_tokens=run.prompt_tokens,
+            completion_tokens=run.completion_tokens,
+            cost_usd=estimate_cost_usd(model, run.prompt_tokens, run.completion_tokens),
+            latency_ms=run.latency_ms,
+        )
+        category_citations = load_category_citations(session, state["region_code"])
+        candidates = to_candidate_flags(run.result, category_citations)
+        dropped = len(run.result.flags) - len(candidates)
+        if dropped:
+            # ADR 0006: a flag with no citation floor for its category is suppressed.
+            _log.info(
+                "engine.contextual_uncited_dropped",
+                document_id=str(state["document_id"]),
+                dropped=dropped,
+            )
+        update: StateUpdate = {"candidate_flags": candidates}
+        log_transition("contextual", state["document_id"], update)
+        return update
+
+    return node
+
+
 def build_engine_graph(
     *,
     dictionary_node: EngineNode,
@@ -89,15 +149,31 @@ def build_engine_graph(
     return graph.compile()
 
 
-def build_default_graph(session: Session) -> CompiledStateGraph[EngineState]:
-    """The production graph: a real dictionary node, passthrough stubs for the LLM stages."""
+def build_default_graph(
+    session: Session, *, contextual_client: StructuredCompletionClient | None = None
+) -> CompiledStateGraph[EngineState]:
+    """The production graph: real dictionary + adjudicator, the Contextual Pass when wired.
+
+    ``contextual_client`` is injected rather than read from settings so the engine layer
+    stays pure and tests stay deterministic: a caller passes the production client (built by
+    ``contextual_pass.build_contextual_client``), a test passes a fake, and ``None`` degrades
+    the contextual stage to a passthrough (dictionary-only). The Judge and Recommendations
+    stages remain stubbed until #49/#50.
+    """
 
     def dictionary_node(state: EngineState) -> StateUpdate:
         return _dictionary_node(state, session)
 
+    if contextual_client is not None:
+        contextual_node = _build_contextual_node(
+            session, contextual_client, get_settings().analysis_model
+        )
+    else:
+        contextual_node = _passthrough_node("contextual")
+
     return build_engine_graph(
         dictionary_node=dictionary_node,
-        contextual_node=_passthrough_node("contextual"),
+        contextual_node=contextual_node,
         judge_node=_passthrough_node("judge"),
         recommendations_node=_passthrough_node("recommendations"),
     )

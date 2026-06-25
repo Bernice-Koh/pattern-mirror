@@ -161,7 +161,7 @@ The growth loop is where agentic AI does meaningful work in the product.
 
 **Four-agent review.** Once triggered, four agents independently evaluate the candidate:
 
-1. **Proposer.** Argues for inclusion. Proposes category, severity, reasoning.
+1. **Proposer.** Argues for inclusion. Proposes category and reasoning.
 2. **Skeptic.** Argues against. Is the phrase too narrow? Just standard business language? Is the evidence thin?
 3. **Categorizer.** Tags scope. *General* (dictionary candidate, applies broadly) vs. *role-specific* (keep as LLM-only flag, do not add to dictionary).
 4. **Citation.** Searches for academic or regulatory support. Absence of support means skip dictionary inclusion — the flag may still fire from the Contextual Pass, but it does not become a dictionary entry without citation.

@@ -1,14 +1,22 @@
 """analyze_document persists the document, run, and flags with full provenance."""
 
 import hashlib
+import uuid
 
 import pytest
 from sqlalchemy.orm import Session
 
+from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.models.documents import AnalysisRun, Document
-from pattern_mirror.models.enums import AnalysisRunStatus, DocType, FlagScope, FlagSourceStage
+from pattern_mirror.models.enums import (
+    AnalysisRunStatus,
+    BiasCategory,
+    DocType,
+    FlagScope,
+    FlagSourceStage,
+)
 from pattern_mirror.models.identity import User
-from pattern_mirror.services.analysis import analyze_document
+from pattern_mirror.services.analysis import analyze_document, build_flag
 
 pytestmark = pytest.mark.db
 
@@ -67,3 +75,35 @@ def test_content_hash_is_the_sha256_of_the_content(db_session: Session) -> None:
     result = analyze_document(db_session, owner_id=owner.id, doc_type=DocType.jd, content=content)
 
     assert result.run.content_hash == hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def test_build_flag_derives_normalised_span_for_a_contextual_candidate() -> None:
+    # A contextual candidate has no lemma key; build_flag derives the normalised span from
+    # the raw span via the lemmatiser, and carries its scope.
+    content = "We value a culture fit."
+    start = content.index("culture fit")
+    citation_id = uuid.uuid4()
+    candidate = CandidateFlag(
+        source_stage=FlagSourceStage.contextual,
+        category=BiasCategory.race,
+        raw_span="culture fit",
+        scope=FlagScope.role_specific,
+        citation_id=citation_id,
+        start_offset=start,
+        end_offset=start + len("culture fit"),
+        explanation="Vague 'fit' invites in-group bias.",
+    )
+
+    flag = build_flag(
+        document_id=uuid.uuid4(),
+        analysis_run_id=uuid.uuid4(),
+        candidate=candidate,
+        content=content,
+    )
+
+    assert flag.source_stage is FlagSourceStage.contextual
+    assert flag.scope is FlagScope.role_specific
+    assert flag.dictionary_entry_id is None
+    assert flag.citation_id == citation_id  # the floor citation carries through unchanged
+    assert flag.normalised_span == "culture fit"
+    assert flag.sentence_fingerprint

@@ -55,7 +55,6 @@ def test_biased_document_returns_persisted_cited_flags(
     assert len(body["flags"]) == 1
     flag = body["flags"][0]
     assert flag["category"] == "age"
-    assert flag["severity"] == "medium"
     assert flag["raw_span"] == "digital native"
     assert flag["citation"]["source_type"] == "tafep"
 
@@ -81,7 +80,6 @@ def test_response_carries_only_typed_fields(analyze_client: TestClient) -> None:
         "id",
         "source_stage",
         "category",
-        "severity",
         "raw_span",
         "start_offset",
         "end_offset",

@@ -41,6 +41,18 @@ class Settings(BaseSettings):
     # the suite falls back to database_url in that case.
     test_database_url: str | None = None
 
+    # Anthropic API key for the LLM Agent stages (Contextual Pass, Judge,
+    # Recommendations). Optional so the service and the test suite boot without
+    # it — tests mock every Anthropic call; the Agent nodes raise only if invoked
+    # without a key. Never logged or committed.
+    anthropic_api_key: str | None = None
+
+    # Model for the analysis Agents (the Contextual Pass; later Recommendations).
+    # Kept in config, not hard-coded, so it can be swapped without touching the
+    # engine (design spec: Sonnet 4.6 for these stages). The Judge model and the
+    # confidence threshold land with the Judge stage (#49) that consumes them.
+    analysis_model: str = "claude-sonnet-4-6"
+
 
 @lru_cache
 def get_settings() -> Settings:

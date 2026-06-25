@@ -15,12 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from pattern_mirror.db.base import Base
 from pattern_mirror.models.columns import uuid_pk
-from pattern_mirror.models.enums import (
-    BiasCategory,
-    Severity,
-    bias_category_enum,
-    severity_enum,
-)
+from pattern_mirror.models.enums import BiasCategory, bias_category_enum
 from pattern_mirror.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
@@ -47,7 +42,6 @@ class Dictionary(TimestampMixin, Base):
     category: Mapped[BiasCategory] = mapped_column(bias_category_enum)
     term: Mapped[str] = mapped_column(String)
     lemma_key: Mapped[str] = mapped_column(String)
-    severity: Mapped[Severity] = mapped_column(severity_enum)
     citation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("citations.id"))
     explanation: Mapped[str] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(server_default=text("true"))

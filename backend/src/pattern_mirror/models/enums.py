@@ -2,8 +2,8 @@
 
 Each set is a ``StrEnum`` (the Python-side domain) paired with a ``sqlalchemy.Enum``
 bound to a stable PostgreSQL type name. Columns that share a type — ``bias_category``
-on both ``flags`` and ``dictionaries``, ``severity`` and ``flag_scope`` likewise —
-reference the *same* instance so there is one definition, not two that can drift.
+on both ``flags`` and ``dictionaries`` — reference the *same* instance so there is one
+definition, not two that can drift.
 
 ``create_type=False``: the enum types are created (and dropped) explicitly in the
 Alembic migration, not implicitly by table DDL. This keeps creation order under the
@@ -86,12 +86,6 @@ class FlagVerdict(StrEnum):
     unacceptable = auto()
 
 
-class Severity(StrEnum):
-    low = auto()
-    medium = auto()
-    high = auto()
-
-
 class AgentName(StrEnum):
     contextual_pass = auto()
     judge = auto()
@@ -123,5 +117,4 @@ flag_source_stage_enum = _pg_enum(FlagSourceStage, "flag_source_stage")
 bias_category_enum = _pg_enum(BiasCategory, "bias_category")
 flag_scope_enum = _pg_enum(FlagScope, "flag_scope")
 flag_verdict_enum = _pg_enum(FlagVerdict, "flag_verdict")
-severity_enum = _pg_enum(Severity, "severity")
 agent_name_enum = _pg_enum(AgentName, "agent_name")

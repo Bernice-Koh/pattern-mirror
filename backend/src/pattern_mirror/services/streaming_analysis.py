@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from pattern_mirror.engine.candidate_flag import CandidateFlag
+from pattern_mirror.engine.contextual_pass import StructuredCompletionClient
 from pattern_mirror.engine.orchestrator import build_default_graph
 from pattern_mirror.engine.state import initial_state
 from pattern_mirror.models.documents import AnalysisRun
@@ -101,6 +102,7 @@ def stream_analysis_events(
     content: str,
     doc_type: DocType,
     registry: RunRegistry,
+    contextual_client: StructuredCompletionClient | None = None,
     region_code: str = _REGION_CODE,
 ) -> Iterator[StreamEvent]:
     """Run the engine over a document and yield an event per stage, then a terminal event.
@@ -118,6 +120,7 @@ def stream_analysis_events(
         content: The current document text to analyse.
         doc_type: The document's type, from the persisted document.
         registry: The run registry that arbitrates supersede.
+        contextual_client: The Contextual Pass client; ``None`` runs dictionary-only.
         region_code: The lexicon region; SG for the MVP.
 
     Yields:
@@ -138,7 +141,7 @@ def stream_analysis_events(
     flag_count = 0
     final_status = AnalysisRunStatus.complete
     try:
-        graph = build_default_graph(session)
+        graph = build_default_graph(session, contextual_client=contextual_client)
         state = initial_state(
             analysis_run_id=run.id,
             document_id=document_id,
