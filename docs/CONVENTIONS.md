@@ -11,7 +11,7 @@ Four concerns at the root: `backend/`, `frontend/`, `docs/`, `deploy/`. Never mi
 Backend code is one installable package, `pattern_mirror`, under `backend/src/` (a standard src-layout). Inside `backend/src/pattern_mirror/`, separated by what code is *for*, not by file type:
 
 - `api/` — FastAPI routers and request/response models. Thin.
-- `engine/` — the five-stage analysis pipeline and LangGraph orchestrator. Stage naming follows the design doc: intelligent components are *Agents*, deterministic components are *Modules*.
+- `engine/` — the five-stage analysis pipeline and LangGraph orchestrator. Stage naming follows the [design spec](DESIGN_SPEC.md): intelligent components are *Agents*, deterministic components are *Modules*.
 - `services/` — business logic callable from API handlers, jobs, and tests alike.
 - `models/` — SQLAlchemy ORM models.
 - `db/` — engine/session setup, Alembic migrations, raw queries if any.
@@ -43,7 +43,7 @@ Tests live in `backend/tests/`, a parallel tree mirroring the package's purpose 
 - Tests mirror the `src/` layout. One behaviour per test.
 - Tests run migrations against the local docker-compose Postgres — never SQLite as a stand-in. Spin up clean, migrate, run, tear down.
 - **Mock all Anthropic API calls in tests.** Deterministic fixtures for Contextual Pass, Judge, and Recommendations outputs. Tests never hit the live API.
-- **Gold set.** Maintain a small labelled set of documents (JDs, feedback, writeups) with known-correct flags from early on. Engine calibration — precision/recall per stage, agreement rate — is measured against it, not assumed. The gold set is also the demo's seed data and the calibration metric in the design doc.
+- **Gold set.** Maintain a small labelled set of documents (JDs, feedback, writeups) with known-correct flags from early on. Engine calibration — precision/recall per stage, agreement rate — is measured against it, not assumed. The gold set is also the demo's seed data and the calibration metric in the [design spec](DESIGN_SPEC.md).
 - The deterministic stages (Dictionary Service, Adjudicator, fingerprinting/suppression logic) get thorough unit tests — they're cheap to test and carry the system's correctness guarantees.
 
 ## Logging
