@@ -6,7 +6,7 @@ This file tells Claude Code how to collaborate on this repo. It's loaded automat
 
 pattern-mirror is a longitudinal bias-pattern analysis tool built for the UBS Tomorrow's Talent Programme 2026. It's also a **deliberate learning project** — the owner is early-career and uses this repo to learn industry-standard engineering practice: agile delivery, AI/agent orchestration, and full-stack work under a real four-week deadline. Treat that as the central fact: the goal is understanding *and* shipping, in that order of priority, except when a sprint deadline is at risk — then say so explicitly and we triage together.
 
-The README explains scope and architecture. `docs/CONVENTIONS.md` is the workflow source of truth. `docs/CODE_STYLE.md` is the language-level style source of truth. The design specification in `docs/` is the product source of truth. Read them. If something we're about to do conflicts with them, **stop and flag it** rather than silently deviating.
+The README explains scope and architecture. `docs/CONVENTIONS.md` is the workflow source of truth. `docs/CODE_STYLE.md` is the language-level style source of truth. The design specification ([docs/DESIGN_SPEC.md](docs/DESIGN_SPEC.md)) is the product source of truth. Read them. If something we're about to do conflicts with them, **stop and flag it** rather than silently deviating.
 
 ## Default mode: teach as you go
 
@@ -62,7 +62,7 @@ These are settled across the programme's design phases. If asked about them agai
 - **Anthropic** models: Sonnet 4.6 (Contextual Pass, Recommendations), Haiku 4.5 (Judge). Multi-model gateway is post-MVP; don't add abstraction layers for it now.
 - **Frontend:** React + TypeScript + Vite + Tailwind + TipTap, managed with `npm`; Recharts on the HR portal.
 - **Pre-commit hooks** + **GitHub Actions CI**; **Conventional Commits** with squash-merge.
-- **Engine semantics from the design doc are binding:** the Adjudicator's verbatim span check, Fisher's-exact gating on patterns, document-scoped dismissal fingerprints, log-everything-suppress-in-UI, non-blocking flags.
+- **Engine semantics from the [design spec](docs/DESIGN_SPEC.md) are binding:** the Adjudicator's verbatim span check, Fisher's-exact gating on patterns, document-scoped dismissal fingerprints, log-everything-suppress-in-UI, non-blocking flags.
 
 ## When to ask vs when to act
 

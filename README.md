@@ -83,6 +83,7 @@ deploy/     docker-compose and deployment glue
 
 ## Documentation
 
+- [docs/DESIGN_SPEC.md](docs/DESIGN_SPEC.md) — the captured product design specification (Phase 4); the product source of truth
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — engineering workflow, testing, git, project management
 - [docs/CODE_STYLE.md](docs/CODE_STYLE.md) — language-level style rules for Python and TypeScript
 - [docs/adr/](docs/adr/) — architecture decision records
