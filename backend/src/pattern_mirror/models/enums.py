@@ -55,6 +55,9 @@ class AnalysisRunStatus(StrEnum):
     running = auto()
     complete = auto()
     failed = auto()
+    # A newer run for the same document started before this one finished streaming; it
+    # stopped surfacing results but kept persisting them (design spec §12).
+    superseded = auto()
 
 
 class FlagSourceStage(StrEnum):
