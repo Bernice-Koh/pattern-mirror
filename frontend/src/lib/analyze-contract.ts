@@ -13,8 +13,6 @@ export type BiasCategory =
   | 'disability'
   | 'family_status'
 
-export type Severity = 'low' | 'medium' | 'high'
-
 export type FlagSourceStage = 'dictionary' | 'contextual'
 
 export type CitationSourceType = 'tafep' | 'academic' | 'regulatory' | 'other'
@@ -31,7 +29,6 @@ export interface CitedFlag {
   id: string
   source_stage: FlagSourceStage
   category: BiasCategory
-  severity: Severity
   raw_span: string
   start_offset: number
   end_offset: number

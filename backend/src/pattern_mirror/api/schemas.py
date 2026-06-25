@@ -11,12 +11,7 @@ import uuid
 from pydantic import BaseModel
 
 from pattern_mirror.models.engine import Flag
-from pattern_mirror.models.enums import (
-    BiasCategory,
-    CitationSourceType,
-    FlagSourceStage,
-    Severity,
-)
+from pattern_mirror.models.enums import BiasCategory, CitationSourceType, FlagSourceStage
 
 
 class CitationResponse(BaseModel):
@@ -30,12 +25,16 @@ class CitationResponse(BaseModel):
 
 
 class FlagResponse(BaseModel):
-    """One persisted flag with its provenance and citation."""
+    """One persisted flag with its provenance and citation.
+
+    Every flag carries a citation by reference (ADR 0006): a dictionary flag cites its
+    rule's source, a contextual flag the category-level TAFEP citation. No flag is surfaced
+    uncited.
+    """
 
     id: uuid.UUID
     source_stage: FlagSourceStage
     category: BiasCategory
-    severity: Severity
     raw_span: str
     start_offset: int
     end_offset: int
@@ -47,20 +46,18 @@ def serialise_flag(flag: Flag) -> FlagResponse:
     """Map a persisted flag and its relationships into the response model.
 
     Args:
-        flag: A persisted flag whose dictionary entry and citation are loadable on the
-            active session (so its severity and citation can be rendered).
+        flag: A persisted flag whose citation relationship is loadable on the active session.
 
     Returns:
         The flag as a boundary-safe response model.
     """
-    # A persisted dictionary flag always has offsets, a rule (for severity), and a citation.
-    assert flag.dictionary_entry is not None and flag.citation is not None
+    # Every persisted flag has resolved offsets (the Adjudicator) and a citation (ADR 0006).
     assert flag.start_offset is not None and flag.end_offset is not None
+    assert flag.citation is not None
     return FlagResponse(
         id=flag.id,
         source_stage=flag.source_stage,
         category=flag.category,
-        severity=flag.dictionary_entry.severity,
         raw_span=flag.raw_span,
         start_offset=flag.start_offset,
         end_offset=flag.end_offset,

@@ -25,14 +25,13 @@ from pattern_mirror.engine.state import (
     initial_state,
     log_transition,
 )
-from pattern_mirror.models.enums import BiasCategory, DocType, FlagSourceStage, Severity
+from pattern_mirror.models.enums import BiasCategory, DocType, FlagSourceStage
 
 
 def _flag(raw_span: str, *, stage: FlagSourceStage = FlagSourceStage.contextual) -> CandidateFlag:
     return CandidateFlag(
         source_stage=stage,
         category=BiasCategory.gender,
-        severity=Severity.medium,
         raw_span=raw_span,
     )
 

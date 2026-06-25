@@ -12,7 +12,7 @@ from pattern_mirror.engine.adjudicator import (
     adjudicate_flags,
 )
 from pattern_mirror.engine.candidate_flag import CandidateFlag
-from pattern_mirror.models.enums import BiasCategory, FlagSourceStage, Severity
+from pattern_mirror.models.enums import BiasCategory, FlagSourceStage
 
 
 def _contextual_flag(
@@ -25,7 +25,6 @@ def _contextual_flag(
     return CandidateFlag(
         source_stage=FlagSourceStage.contextual,
         category=BiasCategory.gender,
-        severity=Severity.medium,
         raw_span=raw_span,
         start_offset=start_offset,
         end_offset=end_offset,
@@ -130,7 +129,6 @@ def test_dictionary_flag_with_correct_offsets_survives_untouched() -> None:
     flag = CandidateFlag(
         source_stage=FlagSourceStage.dictionary,
         category=BiasCategory.age,
-        severity=Severity.medium,
         raw_span="digital native",
         start_offset=10,
         end_offset=24,
