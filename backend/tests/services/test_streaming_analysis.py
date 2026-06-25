@@ -7,15 +7,25 @@ that raises mid-stream. All are ``db``-marked because the run and its flags are 
 
 import uuid
 from collections.abc import Iterator
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
+from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
-from pattern_mirror.models.enums import AnalysisRunStatus, DocType
+from pattern_mirror.models.enums import (
+    AgentName,
+    AnalysisRunStatus,
+    BiasCategory,
+    DocType,
+    FlagScope,
+    FlagSourceStage,
+)
 from pattern_mirror.models.identity import User
 from pattern_mirror.services import streaming_analysis
 from pattern_mirror.services.run_registry import RunRegistry
@@ -27,6 +37,18 @@ from pattern_mirror.services.streaming_analysis import (
 )
 
 pytestmark = pytest.mark.db
+
+
+class _FakeContextualClient:
+    """Deterministic stand-in for the Instructor client: fixed flags, recorded usage."""
+
+    def __init__(self, result: ContextualPassResult) -> None:
+        self._result = result
+        self._completion = SimpleNamespace(usage=SimpleNamespace(input_tokens=90, output_tokens=30))
+
+    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+        return self._result, self._completion
+
 
 _BIASED_TEXT = "We want a digital native for this role."
 
@@ -133,7 +155,9 @@ def test_a_failed_stage_is_logged_and_the_stream_closes_cleanly(
     db_session: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     document = _document(db_session)
-    monkeypatch.setattr(streaming_analysis, "build_default_graph", lambda session: _RaisingGraph())
+    monkeypatch.setattr(
+        streaming_analysis, "build_default_graph", lambda *args, **kwargs: _RaisingGraph()
+    )
 
     events = list(
         stream_analysis_events(
@@ -154,3 +178,51 @@ def test_a_failed_stage_is_logged_and_the_stream_closes_cleanly(
     ).one()
     assert run.status is AnalysisRunStatus.failed
     assert run.completed_at is not None
+
+
+def test_contextual_flags_are_verified_persisted_and_logged(db_session: Session) -> None:
+    # The fake flags a phrase present verbatim, so the Adjudicator keeps it and resolves
+    # its offsets; the dictionary may also flag, so assertions filter to contextual.
+    document = _document(db_session, content="We value a strong culture fit.")
+    fake = _FakeContextualClient(
+        ContextualPassResult(
+            flags=[
+                ContextualFlag(
+                    raw_span="culture fit",
+                    category=BiasCategory.race,
+                    scope=FlagScope.role_specific,
+                    explanation="Vague 'fit' invites in-group bias.",
+                )
+            ]
+        )
+    )
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            contextual_client=fake,
+        )
+    )
+
+    contextual = [
+        event.flag
+        for event in events
+        if isinstance(event, FlagSurfaced) and event.flag.source_stage is FlagSourceStage.contextual
+    ]
+    assert [flag.raw_span for flag in contextual] == ["culture fit"]
+    flag = contextual[0]
+    assert flag.scope is FlagScope.role_specific
+    assert flag.citation_id is not None  # the category-level TAFEP floor citation (ADR 0006)
+    assert flag.normalised_span == "culture fit"  # derived from raw_span via the lemmatiser
+    assert flag.start_offset is not None  # the Adjudicator resolved the span
+
+    agent_run = db_session.scalars(
+        select(AgentRun).where(AgentRun.document_id == document.id)
+    ).one()
+    assert agent_run.agent_name is AgentName.contextual_pass
+    assert agent_run.prompt_tokens == 90
+    assert agent_run.analysis_run_id is not None
