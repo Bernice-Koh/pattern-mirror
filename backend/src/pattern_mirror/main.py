@@ -16,9 +16,9 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from pattern_mirror import __version__
-from pattern_mirror.api import analyze, health
+from pattern_mirror.api import analyze, health, streaming
 from pattern_mirror.core.config import get_settings
-from pattern_mirror.core.errors import PatternMirrorError
+from pattern_mirror.core.errors import DocumentNotFoundError, PatternMirrorError
 from pattern_mirror.core.logging import configure_logging
 from pattern_mirror.core.middleware import CorrelationIdMiddleware
 
@@ -44,6 +44,15 @@ async def _handle_domain_error(request: Request, exc: Exception) -> JSONResponse
     )
 
 
+async def _handle_document_not_found(request: Request, exc: Exception) -> JSONResponse:
+    # A more specific handler than _handle_domain_error: a missing/foreign document is a
+    # client addressing error (404), not a server fault.
+    return JSONResponse(
+        status_code=404,
+        content={"error": type(exc).__name__, "detail": str(exc)},
+    )
+
+
 def create_app() -> FastAPI:
     """Build and configure the FastAPI application.
 
@@ -61,7 +70,9 @@ def create_app() -> FastAPI:
         debug=settings.app_env == "development",
     )
     app.add_middleware(CorrelationIdMiddleware)
+    app.add_exception_handler(DocumentNotFoundError, _handle_document_not_found)
     app.add_exception_handler(PatternMirrorError, _handle_domain_error)
     app.include_router(health.router)
     app.include_router(analyze.router)
+    app.include_router(streaming.router)
     return app
