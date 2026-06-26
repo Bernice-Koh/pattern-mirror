@@ -143,10 +143,11 @@ Short JSDoc explaining *intent* on public components and exported functions; int
 ### State management
 
 - Local state (`useState`, `useReducer`) is the default.
-- Server state (flags, patterns, documents from the API) goes through TanStack Query — including its handling around the SSE flag stream. Don't mirror server state into a global store.
+- Server state (flags, patterns, documents from the API) goes through TanStack Query — Layer 1's request/response `/analyze` call included. Don't mirror server state into a global store.
+- A long-lived SSE subscription that *accumulates* incrementally (the Layer 2 flag stream) is the exception: it lives in a dedicated hook owning its `AbortController` and accumulator, not on TanStack Query. Query models one request resolving to one response, not an open stream appending results over seconds.
 - Global UI state (active view, sidebar) — Context if tiny, Zustand if it grows.
 
-> *Why:* the classic mistake is putting server data in a global store and hand-writing a sync layer; server-state libraries solve caching, loading states, and refetching for free.
+> *Why:* the classic mistake is putting server data in a global store and hand-writing a sync layer; server-state libraries solve caching, loading states, and refetching for free. The carve-out is narrow — only the accumulating stream, because the abstraction Query is built around (request → response) doesn't fit it.
 
 ### Styling
 
