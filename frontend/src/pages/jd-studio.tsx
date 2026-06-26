@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   CATEGORY_LABELS,
   formatCitation,
+  sourceLabel,
   type BiasCategory,
   type CitedFlag,
 } from '@/lib/analyze-contract'
@@ -54,7 +55,7 @@ export function JdStudio() {
               <FlagCard
                 key={flag.id}
                 category={CATEGORY_LABELS[flag.category]}
-                source="dictionary"
+                source={sourceLabel(flag.source_stage)}
                 original={flag.raw_span}
                 explanation={flag.explanation}
                 citation={formatCitation(flag.citation)}

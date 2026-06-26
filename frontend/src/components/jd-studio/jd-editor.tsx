@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { EditorContent, useEditor } from '@tiptap/react'
@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit'
 import {
   CATEGORY_LABELS,
   formatCitation,
+  sourceLabel,
   type CitedFlag,
   type DocType,
 } from '@/lib/analyze-contract'
@@ -16,6 +17,7 @@ import {
   applyFlags,
   FlagDecorations,
 } from '@/components/jd-studio/flag-decorations'
+import { useFlagStream } from '@/components/jd-studio/use-flag-stream'
 
 const ANALYZE_DEBOUNCE_MS = 400
 
@@ -63,15 +65,25 @@ export function JdEditor({
     placeholderData: keepPreviousData,
   })
 
+  // Layer 2 streams its contextual flags off the document Layer 1 just persisted.
+  const contextualFlags = useFlagStream(data?.document_id ?? null, text)
+
+  const flags = useMemo(
+    () => [...(data?.flags ?? []), ...contextualFlags],
+    [data, contextualFlags],
+  )
+
   useEffect(() => {
-    if (!editor || !data) return
-    flagsById.current = new Map(data.flags.map((flag) => [flag.id, flag]))
-    applyFlags(editor.view, data.flags)
-    onFlagsChange?.(data.flags)
-  }, [editor, data, onFlagsChange])
+    if (!editor) return
+    flagsById.current = new Map(flags.map((flag) => [flag.id, flag]))
+    applyFlags(editor.view, flags)
+    onFlagsChange?.(flags)
+  }, [editor, flags, onFlagsChange])
 
   function handleMouseOver(event: ReactMouseEvent<HTMLDivElement>) {
-    const span = (event.target as HTMLElement).closest('.flag-dict')
+    const span = (event.target as HTMLElement).closest(
+      '.flag-dict, .flag-context',
+    )
     if (!(span instanceof HTMLElement)) {
       setHover(null)
       return
@@ -97,9 +109,7 @@ export function JdEditor({
             } as CSSProperties
           }
           category={CATEGORY_LABELS[hover.flag.category]}
-          source={
-            hover.flag.source_stage === 'contextual' ? 'AI pass' : 'dictionary'
-          }
+          source={sourceLabel(hover.flag.source_stage)}
           explanation={hover.flag.explanation}
           citation={formatCitation(hover.flag.citation)}
         />

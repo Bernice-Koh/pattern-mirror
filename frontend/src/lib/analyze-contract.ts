@@ -61,6 +61,11 @@ export const CATEGORY_LABELS: Record<BiasCategory, string> = {
   family_status: 'Family status',
 }
 
+/** Human label for a flag's origin, shared by the popover and the flag cards. */
+export function sourceLabel(stage: FlagSourceStage): string {
+  return stage === 'contextual' ? 'AI pass' : 'dictionary'
+}
+
 /** One-line evidence string for the flag popover and cards. */
 export function formatCitation(citation: Citation): string {
   const parts = [citation.reference || citation.title]
