@@ -23,6 +23,7 @@
   /* Semantic flag accents */
   --color-amber-contextual: var(--amber-contextual);
   --color-amber-line: var(--amber-line);
+  --color-amber-tint: var(--amber-tint);
   --color-green-positive: var(--green-positive);
   --color-purple-pattern: var(--purple-pattern);
 
@@ -90,14 +91,27 @@
   outline: none;
 }
 
-.flag-dict {
-  border-bottom: 2px solid var(--red-line);
+.flag-dict,
+.flag-context {
   border-radius: 2px;
   padding-bottom: 1px;
   cursor: pointer;
   transition: background 120ms ease;
 }
 
+/* Solid red — dictionary flag (Layer 1); dashed amber — AI contextual flag (Layer 2). */
+.flag-dict {
+  border-bottom: 2px solid var(--red-line);
+}
+
 .flag-dict:hover {
   background: var(--red-tint);
+}
+
+.flag-context {
+  border-bottom: 2px dashed var(--amber-line);
+}
+
+.flag-context:hover {
+  background: var(--amber-tint);
 }

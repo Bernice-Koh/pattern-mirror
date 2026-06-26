@@ -23,7 +23,8 @@ function buildDecorations(
     if (from < 1 || to > doc.content.size || from >= to) continue
     decorations.push(
       Decoration.inline(from, to, {
-        class: 'flag-dict',
+        class:
+          flag.source_stage === 'contextual' ? 'flag-context' : 'flag-dict',
         'data-flag-id': flag.id,
       }),
     )
