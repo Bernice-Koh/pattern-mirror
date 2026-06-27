@@ -1,9 +1,10 @@
 """The five-stage engine wired as a LangGraph StateGraph over ``EngineState``.
 
 The linear pipeline Dictionary -> Contextual -> Adjudicator -> Judge -> Recommendations:
-the deterministic Modules are real nodes, the LLM Agents are injected and stubbed with
-passthroughs until their own stages land. Each node returns a partial ``StateUpdate`` the
-graph merges by channel and logs; the Adjudicator drops unverifiable flags and records why.
+the deterministic Modules and the injected Contextual Pass + Judge Agents are real nodes;
+Recommendations is stubbed with a passthrough until its stage lands. Each node returns a
+partial ``StateUpdate`` the graph merges by channel and logs; the Adjudicator drops
+unverifiable flags and records why.
 """
 
 from collections.abc import Callable
@@ -13,11 +14,10 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from sqlalchemy.orm import Session
 
-from pattern_mirror.core.config import get_settings
+from pattern_mirror.core.config import Settings, get_settings
 from pattern_mirror.engine.adjudicator import adjudicate_flags
+from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.contextual_pass import (
-    StructuredCompletionClient,
-    estimate_cost_usd,
     run_contextual_pass,
     to_candidate_flags,
 )
@@ -26,8 +26,10 @@ from pattern_mirror.engine.dictionary import (
     load_category_citations,
     match_dictionary,
 )
-from pattern_mirror.engine.state import EngineState, StateUpdate, log_transition
-from pattern_mirror.models.enums import AgentName
+from pattern_mirror.engine.judge import run_judge, to_judge_scores
+from pattern_mirror.engine.llm_agent import StructuredCompletionClient, estimate_cost_usd
+from pattern_mirror.engine.state import EngineState, JudgeScore, StateUpdate, log_transition
+from pattern_mirror.models.enums import AgentName, FlagSourceStage
 from pattern_mirror.services.agent_runs import record_agent_run
 
 _log = structlog.get_logger("pattern_mirror.engine.orchestrator")
@@ -116,6 +118,69 @@ def _build_contextual_node(
     return node
 
 
+def _ungated_judge_score(flag: CandidateFlag) -> JudgeScore:
+    """A flag that bypasses the Judge — surfaced, unscored (deterministic, or no Agent wired)."""
+    return JudgeScore(flag=flag, confidence=None, suppressed=False)
+
+
+def _build_judge_node(
+    session: Session,
+    client: StructuredCompletionClient | None,
+    model: str,
+    settings: Settings,
+) -> EngineNode:
+    """Build the Judge node: a Haiku 4.5 Agent that confidence-scores the contextual flags.
+
+    Dictionary flags are deterministic and pass ungated; contextual flags are scored and
+    gated on the calibrated threshold, with below-threshold flags marked suppressed (logged,
+    not surfaced, no recommendation — ADR-0007/0008). With no client the stage degrades to
+    passing every flag ungated. Emits one ``JudgeScore`` per verified flag, in order, and
+    logs the run.
+    """
+
+    def node(state: EngineState) -> StateUpdate:
+        verified = state["verified_flags"]
+        contextual = [f for f in verified if f.source_stage is FlagSourceStage.contextual]
+
+        if client is not None and contextual:
+            run = run_judge(client, flags=contextual, doc_type=state["doc_type"], model=model)
+            record_agent_run(
+                session,
+                agent_name=AgentName.judge,
+                model=model,
+                input={
+                    "doc_type": state["doc_type"].value,
+                    "flags": [
+                        {"category": f.category.value, "raw_span": f.raw_span} for f in contextual
+                    ],
+                },
+                output=run.result.model_dump(mode="json"),
+                document_id=state["document_id"],
+                analysis_run_id=state["analysis_run_id"],
+                prompt_tokens=run.prompt_tokens,
+                completion_tokens=run.completion_tokens,
+                cost_usd=estimate_cost_usd(model, run.prompt_tokens, run.completion_tokens),
+                latency_ms=run.latency_ms,
+            )
+            contextual_scores = to_judge_scores(contextual, run.result, settings)
+        else:
+            contextual_scores = [_ungated_judge_score(f) for f in contextual]
+
+        # Re-thread the per-contextual scores back into verified order; dictionary flags ungated.
+        contextual_iter = iter(contextual_scores)
+        scores = [
+            next(contextual_iter)
+            if flag.source_stage is FlagSourceStage.contextual
+            else _ungated_judge_score(flag)
+            for flag in verified
+        ]
+        update: StateUpdate = {"judge_scores": scores}
+        log_transition("judge", state["document_id"], update)
+        return update
+
+    return node
+
+
 def build_engine_graph(
     *,
     dictionary_node: EngineNode,
@@ -150,30 +215,37 @@ def build_engine_graph(
 
 
 def build_default_graph(
-    session: Session, *, contextual_client: StructuredCompletionClient | None = None
+    session: Session,
+    *,
+    contextual_client: StructuredCompletionClient | None = None,
+    judge_client: StructuredCompletionClient | None = None,
 ) -> CompiledStateGraph[EngineState]:
-    """The production graph: real dictionary + adjudicator, the Contextual Pass when wired.
+    """The production graph: real dictionary + adjudicator, plus the Agent stages when wired.
 
-    ``contextual_client`` is injected rather than read from settings so the engine layer
-    stays pure and tests stay deterministic: a caller passes the production client (built by
-    ``contextual_pass.build_contextual_client``), a test passes a fake, and ``None`` degrades
-    the contextual stage to a passthrough (dictionary-only). The Judge and Recommendations
-    stages remain stubbed until #49/#50.
+    The Agent clients are injected rather than read from settings so the engine layer stays
+    pure and tests stay deterministic: a caller passes the production client (built by
+    ``llm_agent.build_instructor_client``), a test passes a fake, and ``None`` degrades that
+    stage — the Contextual Pass to a passthrough (dictionary-only), the Judge to scoring
+    nothing (every flag ungated). The Judge always runs because it is the persistence point
+    for the streaming path. Recommendations remains stubbed until #50.
     """
+    settings = get_settings()
 
     def dictionary_node(state: EngineState) -> StateUpdate:
         return _dictionary_node(state, session)
 
     if contextual_client is not None:
         contextual_node = _build_contextual_node(
-            session, contextual_client, get_settings().analysis_model
+            session, contextual_client, settings.analysis_model
         )
     else:
         contextual_node = _passthrough_node("contextual")
 
+    judge_node = _build_judge_node(session, judge_client, settings.judge_model, settings)
+
     return build_engine_graph(
         dictionary_node=dictionary_node,
         contextual_node=contextual_node,
-        judge_node=_passthrough_node("judge"),
+        judge_node=judge_node,
         recommendations_node=_passthrough_node("recommendations"),
     )

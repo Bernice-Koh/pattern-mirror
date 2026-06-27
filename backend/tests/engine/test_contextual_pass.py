@@ -5,15 +5,11 @@ uses, so these run offline and never touch the live API (CONVENTIONS).
 """
 
 import uuid
-from decimal import Decimal
 from typing import Any
 
-from pattern_mirror.core.config import Settings
 from pattern_mirror.engine.contextual_pass import (
     ContextualFlag,
     ContextualPassResult,
-    build_contextual_client,
-    estimate_cost_usd,
     run_contextual_pass,
     to_candidate_flags,
 )
@@ -117,30 +113,3 @@ def test_to_candidate_flags_drops_a_flag_with_no_floor_citation() -> None:
 
 def test_to_candidate_flags_on_clean_result_is_empty() -> None:
     assert to_candidate_flags(_result(), {}) == []
-
-
-def test_estimate_cost_usd_prices_a_known_model() -> None:
-    # claude-sonnet-4-6: $3/MTok in, $15/MTok out -> (120*3 + 40*15) / 1e6.
-    assert estimate_cost_usd("claude-sonnet-4-6", 120, 40) == Decimal("0.00096")
-
-
-def test_estimate_cost_usd_is_none_for_unknown_model_or_missing_usage() -> None:
-    assert estimate_cost_usd("mystery-model", 100, 50) is None
-    assert estimate_cost_usd("claude-sonnet-4-6", None, 50) is None
-
-
-def _settings(*, anthropic_api_key: str | None) -> Settings:
-    return Settings(
-        app_env="test",
-        database_url="postgresql+psycopg://x:y@localhost/db",
-        anthropic_api_key=anthropic_api_key,
-    )
-
-
-def test_build_contextual_client_is_none_without_a_key() -> None:
-    assert build_contextual_client(_settings(anthropic_api_key=None)) is None
-
-
-def test_build_contextual_client_builds_a_client_with_a_key() -> None:
-    # Construction is network-free; no request is made here.
-    assert build_contextual_client(_settings(anthropic_api_key="sk-ant-test")) is not None

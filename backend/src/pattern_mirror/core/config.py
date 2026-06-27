@@ -10,6 +10,8 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from pattern_mirror.models.enums import BiasCategory
+
 
 class Settings(BaseSettings):
     """Runtime configuration for the backend service.
@@ -49,9 +51,20 @@ class Settings(BaseSettings):
 
     # Model for the analysis Agents (the Contextual Pass; later Recommendations).
     # Kept in config, not hard-coded, so it can be swapped without touching the
-    # engine (design spec: Sonnet 4.6 for these stages). The Judge model and the
-    # confidence threshold land with the Judge stage (#49) that consumes them.
+    # engine (design spec: Sonnet 4.6 for these stages).
     analysis_model: str = "claude-sonnet-4-6"
+
+    # The Judge Agent's model (design spec: Haiku 4.5 for confidence scoring).
+    judge_model: str = "claude-haiku-4-5"
+
+    # The Judge's gate, on the calibrated score (>= passes, ADR-0008). In config so it
+    # is tunable per environment without a code change; a flag whose calibrated confidence
+    # falls below it is logged but not surfaced and gets no recommendation.
+    judge_confidence_threshold: float = 0.7
+
+    # Per-category threshold overrides (ADR-0008): category -> threshold. Categories absent
+    # here fall back to ``judge_confidence_threshold``.
+    judge_confidence_threshold_overrides: dict[BiasCategory, float] = {}
 
 
 @lru_cache

@@ -59,7 +59,7 @@ def test_flags_carry_provenance_reference_scores_and_suppressed(migrated_engine:
     assert columns["dictionary_entry_id"]["nullable"] is True
     assert columns["citation_id"]["nullable"] is True
     assert columns["judge_confidence"]["nullable"] is True
-    assert columns["judge_hallucination_risk"]["nullable"] is True
+    assert "judge_hallucination_risk" not in columns
     assert columns["suppressed"]["nullable"] is False
 
 

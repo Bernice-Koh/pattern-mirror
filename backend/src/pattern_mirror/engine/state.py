@@ -30,14 +30,16 @@ def accumulate_candidate_flags(
 
 @dataclass(frozen=True)
 class JudgeScore:
-    """The Judge's verdict on one surviving flag.
+    """The Judge's verdict on one surviving flag: its confidence and whether the gate dropped it.
 
-    Mirrors the ``flags`` table's score columns; its shape firms up with the Judge stage.
+    ``confidence`` is the raw verbalized score in [0, 1] (ADR-0008), or None for a deterministic
+    dictionary flag the Judge does not score. ``suppressed`` is True when the calibrated score
+    fell below the threshold: the flag is logged but not surfaced and gets no recommendation.
     """
 
     flag: CandidateFlag
-    confidence: float
-    hallucination_risk: float
+    confidence: float | None
+    suppressed: bool = False
 
 
 @dataclass(frozen=True)

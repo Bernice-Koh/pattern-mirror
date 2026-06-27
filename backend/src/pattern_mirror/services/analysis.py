@@ -11,6 +11,7 @@ import hashlib
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 
 import structlog
 from sqlalchemy import select
@@ -43,6 +44,8 @@ def build_flag(
     analysis_run_id: uuid.UUID,
     candidate: CandidateFlag,
     content: str,
+    judge_confidence: float | None = None,
+    suppressed: bool = False,
 ) -> Flag:
     """Build a persistable ``Flag`` row from a candidate, with its full provenance.
 
@@ -58,6 +61,8 @@ def build_flag(
             on dictionary flags, so for contextual flags the normalised span is derived
             from ``raw_span``.
         content: The exact document text the offsets index into.
+        judge_confidence: The Judge's raw confidence, or None for a flag it did not score.
+        suppressed: True when the Judge's gate dropped the flag (logged, not surfaced).
 
     Returns:
         An unpersisted ``Flag`` carrying the candidate's span, provenance, and fingerprint.
@@ -82,6 +87,8 @@ def build_flag(
         start_offset=candidate.start_offset,
         end_offset=candidate.end_offset,
         rationale={"explanation": candidate.explanation},
+        judge_confidence=Decimal(str(judge_confidence)) if judge_confidence is not None else None,
+        suppressed=suppressed,
     )
 
 

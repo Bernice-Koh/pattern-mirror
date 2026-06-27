@@ -7,6 +7,7 @@ that raises mid-stream. All are ``db``-marked because the run and its flags are 
 
 import uuid
 from collections.abc import Iterator
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -15,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
+from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
 from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
@@ -50,7 +52,35 @@ class _FakeContextualClient:
         return self._result, self._completion
 
 
+class _FakeJudgeClient:
+    """Deterministic stand-in for the Judge client: fixed verdicts, recorded usage."""
+
+    def __init__(self, result: JudgeResult) -> None:
+        self._result = result
+        self._completion = SimpleNamespace(usage=SimpleNamespace(input_tokens=70, output_tokens=15))
+
+    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+        return self._result, self._completion
+
+
 _BIASED_TEXT = "We want a digital native for this role."
+# A dictionary hit ("digital native") plus a phrase the fake Contextual Pass flags ("culture fit").
+_MIXED_TEXT = "We want a digital native who is a strong culture fit."
+
+
+def _culture_fit_contextual() -> _FakeContextualClient:
+    return _FakeContextualClient(
+        ContextualPassResult(
+            flags=[
+                ContextualFlag(
+                    raw_span="culture fit",
+                    category=BiasCategory.race,
+                    scope=FlagScope.role_specific,
+                    explanation="Vague 'fit' invites in-group bias.",
+                )
+            ]
+        )
+    )
 
 
 def _document(session: Session, *, content: str = _BIASED_TEXT) -> Document:
@@ -127,8 +157,8 @@ def test_a_newer_run_supersedes_the_older_one_but_its_flags_persist(db_session: 
     )
     for event in stream:
         events.append(event)
-        # A newer run starts once the older one clears contextual, i.e. the stage before the
-        # adjudicator produces its flag — so the adjudicator persists but does not surface it.
+        # A newer run starts once the older one clears contextual; the Judge stage then still
+        # persists the flag (log everything) but the supersede gate stops it surfacing.
         if isinstance(event, StageCompleted) and event.stage == "contextual":
             registry.register(document.id, uuid.uuid4())
 
@@ -226,3 +256,74 @@ def test_contextual_flags_are_verified_persisted_and_logged(db_session: Session)
     assert agent_run.agent_name is AgentName.contextual_pass
     assert agent_run.prompt_tokens == 90
     assert agent_run.analysis_run_id is not None
+
+
+def test_below_threshold_contextual_flag_is_persisted_suppressed_not_surfaced(
+    db_session: Session,
+) -> None:
+    document = _document(db_session, content=_MIXED_TEXT)
+    judge = _FakeJudgeClient(JudgeResult(verdicts=[JudgeVerdict(confidence=0.4, reasoning="weak")]))
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            contextual_client=_culture_fit_contextual(),
+            judge_client=judge,
+        )
+    )
+
+    # Suppress in UI: only the deterministic dictionary flag surfaces; the low-confidence
+    # contextual flag does not.
+    surfaced = [event.flag.raw_span for event in events if isinstance(event, FlagSurfaced)]
+    assert surfaced == ["digital native"]
+
+    # Log everything: both flags are persisted, the contextual one as suppressed + scored.
+    persisted = {
+        flag.raw_span: flag
+        for flag in db_session.scalars(select(Flag).where(Flag.document_id == document.id)).all()
+    }
+    assert persisted["digital native"].suppressed is False
+    assert persisted["digital native"].judge_confidence is None
+    assert persisted["culture fit"].suppressed is True
+    assert persisted["culture fit"].judge_confidence == Decimal("0.4")
+
+
+def test_above_threshold_contextual_flag_surfaces_with_its_confidence(
+    db_session: Session,
+) -> None:
+    document = _document(db_session, content=_MIXED_TEXT)
+    judge = _FakeJudgeClient(
+        JudgeResult(verdicts=[JudgeVerdict(confidence=0.9, reasoning="clear")])
+    )
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            contextual_client=_culture_fit_contextual(),
+            judge_client=judge,
+        )
+    )
+
+    surfaced = {event.flag.raw_span for event in events if isinstance(event, FlagSurfaced)}
+    assert surfaced == {"digital native", "culture fit"}
+
+    kept = db_session.scalars(
+        select(Flag).where(Flag.document_id == document.id, Flag.raw_span == "culture fit")
+    ).one()
+    assert kept.suppressed is False
+    assert kept.judge_confidence == Decimal("0.9")
+
+    judge_run = db_session.scalars(
+        select(AgentRun).where(
+            AgentRun.document_id == document.id, AgentRun.agent_name == AgentName.judge
+        )
+    ).one()
+    assert judge_run.analysis_run_id is not None

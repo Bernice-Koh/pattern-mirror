@@ -15,27 +15,14 @@ import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from decimal import Decimal
-from typing import Any, Protocol, TypeVar, cast
 
-import instructor
-from anthropic import Anthropic
 from pydantic import BaseModel, Field
 
-from pattern_mirror.core.config import Settings
 from pattern_mirror.engine.candidate_flag import CandidateFlag
+from pattern_mirror.engine.llm_agent import StructuredCompletionClient
 from pattern_mirror.models.enums import BiasCategory, DocType, FlagScope, FlagSourceStage
 
-T = TypeVar("T")
-
 _MAX_TOKENS = 4096
-
-# USD per million tokens (input, output) per model, for the agent_runs cost audit. Static
-# table kept in code deliberately — update when Anthropic pricing changes; an unknown model
-# logs a null cost rather than a wrong one.
-_PRICES_USD_PER_MTOK: dict[str, tuple[str, str]] = {
-    "claude-sonnet-4-6": ("3", "15"),
-}
 
 _DOC_TYPE_LABELS: dict[DocType, str] = {
     DocType.jd: "job description",
@@ -98,16 +85,6 @@ class ContextualPassRun:
     prompt_tokens: int | None
     completion_tokens: int | None
     latency_ms: int
-
-
-class StructuredCompletionClient(Protocol):
-    """The one Instructor method the pass uses: schema-validated output plus the completion.
-
-    Typed as a Protocol so the agent is exercised in tests with a deterministic fake and is
-    not coupled to Instructor's class hierarchy.
-    """
-
-    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]: ...
 
 
 def _user_prompt(document_text: str, doc_type: DocType) -> str:
@@ -188,34 +165,3 @@ def to_candidate_flags(
             )
         )
     return candidates
-
-
-def estimate_cost_usd(
-    model: str, prompt_tokens: int | None, completion_tokens: int | None
-) -> Decimal | None:
-    """Estimate the call cost from token usage, or None if pricing/usage is unavailable."""
-    price = _PRICES_USD_PER_MTOK.get(model)
-    if price is None or prompt_tokens is None or completion_tokens is None:
-        return None
-    input_price, output_price = price
-    per_million = Decimal(1_000_000)
-    return (
-        Decimal(prompt_tokens) * Decimal(input_price)
-        + Decimal(completion_tokens) * Decimal(output_price)
-    ) / per_million
-
-
-def build_contextual_client(settings: Settings) -> StructuredCompletionClient | None:
-    """Build the production Instructor-wrapped Anthropic client, or None without a key.
-
-    Construction is network-free — no request is made until ``create_with_completion`` is
-    called — so this is safe to call on a path that may not run the agent. Returns None when
-    no API key is configured, which the orchestrator wires as a passthrough (the engine
-    degrades to dictionary-only rather than failing).
-    """
-    if settings.anthropic_api_key is None:
-        return None
-    # Instructor's overloaded create_with_completion doesn't structurally unify with the
-    # minimal Protocol, but the runtime contract is exactly what the agent calls.
-    client = instructor.from_anthropic(Anthropic(api_key=settings.anthropic_api_key))
-    return cast(StructuredCompletionClient, client)
