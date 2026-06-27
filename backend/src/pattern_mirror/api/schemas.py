@@ -24,12 +24,20 @@ class CitationResponse(BaseModel):
     finding: str | None
 
 
+class RecommendationResponse(BaseModel):
+    """Evidence-anchored rewrites for a flag: 2-3 alternatives and the rationale behind them."""
+
+    rationale: str
+    alternatives: list[str]
+
+
 class FlagResponse(BaseModel):
     """One persisted flag with its provenance and citation.
 
     Every flag carries a citation by reference (ADR 0006): a dictionary flag cites its
     rule's source, a contextual flag the category-level TAFEP citation. No flag is surfaced
-    uncited.
+    uncited. ``recommendations`` is null until the Recommendations Agent attaches rewrites,
+    and on flags it never runs on (dictionary, below threshold).
     """
 
     id: uuid.UUID
@@ -40,6 +48,7 @@ class FlagResponse(BaseModel):
     end_offset: int
     explanation: str
     citation: CitationResponse
+    recommendations: RecommendationResponse | None
 
 
 def serialise_flag(flag: Flag) -> FlagResponse:
@@ -68,5 +77,10 @@ def serialise_flag(flag: Flag) -> FlagResponse:
             reference=flag.citation.reference,
             publication_year=flag.citation.publication_year,
             finding=flag.citation.finding,
+        ),
+        recommendations=(
+            RecommendationResponse(**flag.recommendations)
+            if flag.recommendations is not None
+            else None
         ),
     )

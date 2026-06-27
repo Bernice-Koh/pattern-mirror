@@ -25,6 +25,13 @@ export interface Citation {
   finding: string | null
 }
 
+/** Evidence-anchored rewrites the Recommendations Agent attaches to a surfaced flag:
+ *  2-3 alternative phrasings plus the rationale. Null on flags it never runs on. */
+export interface Recommendation {
+  rationale: string
+  alternatives: string[]
+}
+
 export interface CitedFlag {
   id: string
   source_stage: FlagSourceStage
@@ -34,6 +41,7 @@ export interface CitedFlag {
   end_offset: number
   explanation: string
   citation: Citation
+  recommendations?: Recommendation | null
 }
 
 export interface AnalyzeRequest {

@@ -85,4 +85,5 @@ def test_response_carries_only_typed_fields(analyze_client: TestClient) -> None:
         "end_offset",
         "explanation",
         "citation",
+        "recommendations",
     }

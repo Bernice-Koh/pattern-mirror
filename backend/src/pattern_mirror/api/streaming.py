@@ -111,6 +111,7 @@ async def analyze_stream(
             registry=registry,
             contextual_client=client,
             judge_client=client,
+            recommendations_client=client,
         ):
             yield _format_sse(event)
 
