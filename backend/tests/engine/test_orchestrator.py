@@ -21,9 +21,11 @@ from pattern_mirror.engine.orchestrator import (
     EngineNode,
     _adjudicator_node,
     _build_judge_node,
+    _build_recommendations_node,
     build_default_graph,
     build_engine_graph,
 )
+from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
 from pattern_mirror.engine.state import (
     EngineState,
     JudgeScore,
@@ -238,3 +240,137 @@ def test_judge_node_scores_contextual_gates_below_threshold_and_passes_dictionar
     ).one()
     assert agent_run.agent_name is AgentName.judge
     assert agent_run.analysis_run_id == run.id
+
+
+class _FakeRecommendationsClient:
+    """Returns a fixed RecommendationsResult and fixed usage; the Anthropic call is never made."""
+
+    def __init__(self, result: RecommendationsResult) -> None:
+        self._result = result
+        self._completion = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=300, output_tokens=90)
+        )
+
+    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+        return self._result, self._completion
+
+
+class _FailingClient:
+    """Raises on the call; stands in for an Anthropic failure the node must absorb."""
+
+    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+        raise RuntimeError("anthropic unavailable")
+
+
+def _persisted_document_and_run(session: Session) -> tuple[Document, AnalysisRun]:
+    user = User(
+        external_user_id=f"rec-{uuid.uuid4()}",
+        legal_name="Rec Manager",
+        email=f"{uuid.uuid4()}@example.test",
+    )
+    session.add(user)
+    session.flush()
+    document = Document(owner_id=user.id, doc_type=DocType.jd, content="text")
+    session.add(document)
+    session.flush()
+    run = AnalysisRun(
+        document_id=document.id, trigger=AnalysisTrigger.typing_pause, content_hash="0" * 64
+    )
+    session.add(run)
+    session.flush()
+    return document, run
+
+
+@pytest.mark.db
+def test_recommendations_node_rewrites_unsuppressed_contextual_flags_only(
+    db_session: Session,
+) -> None:
+    document, run = _persisted_document_and_run(db_session)
+    state = _state("text")
+    state["document_id"] = document.id
+    state["analysis_run_id"] = run.id
+    state["judge_scores"] = [
+        JudgeScore(
+            flag=_flag("digital native", stage=FlagSourceStage.dictionary),
+            confidence=None,
+            suppressed=False,
+        ),
+        JudgeScore(flag=_flag("culture fit"), confidence=0.9, suppressed=False),
+        JudgeScore(flag=_flag("recent graduate"), confidence=0.4, suppressed=True),
+    ]
+    client = _FakeRecommendationsClient(
+        RecommendationsResult(
+            recommendations=[
+                Recommendation(
+                    rationale="r", alternatives=["values our mission", "shares our goals"]
+                )
+            ]
+        )
+    )
+    node = _build_recommendations_node(db_session, client, "claude-sonnet-4-6")
+
+    recommendations = node(state)["recommendations"]
+
+    # Dictionary flags bypass it and suppressed contextual flags terminated at the Judge.
+    assert [r.flag.raw_span for r in recommendations] == ["culture fit"]
+    assert recommendations[0].alternatives == ["values our mission", "shares our goals"]
+    agent_run = db_session.scalars(
+        select(AgentRun).where(
+            AgentRun.document_id == document.id,
+            AgentRun.agent_name == AgentName.recommendations,
+        )
+    ).one()
+    assert agent_run.analysis_run_id == run.id
+
+
+@pytest.mark.db
+def test_recommendations_node_skips_the_agent_when_no_contextual_flag_survives(
+    db_session: Session,
+) -> None:
+    document, run = _persisted_document_and_run(db_session)
+    state = _state("text")
+    state["document_id"] = document.id
+    state["analysis_run_id"] = run.id
+    state["judge_scores"] = [
+        JudgeScore(
+            flag=_flag("digital native", stage=FlagSourceStage.dictionary),
+            confidence=None,
+            suppressed=False,
+        ),
+        JudgeScore(flag=_flag("recent graduate"), confidence=0.4, suppressed=True),
+    ]
+    node = _build_recommendations_node(db_session, _FailingClient(), "claude-sonnet-4-6")
+
+    # The agent would raise if called; an empty result proves it was skipped, not absorbed.
+    assert node(state)["recommendations"] == []
+    assert (
+        db_session.scalars(
+            select(AgentRun).where(AgentRun.agent_name == AgentName.recommendations)
+        ).first()
+        is None
+    )
+
+
+@pytest.mark.db
+def test_recommendations_node_degrades_when_the_agent_fails(db_session: Session) -> None:
+    document, run = _persisted_document_and_run(db_session)
+    state = _state("text")
+    state["document_id"] = document.id
+    state["analysis_run_id"] = run.id
+    state["judge_scores"] = [
+        JudgeScore(flag=_flag("culture fit"), confidence=0.9, suppressed=False)
+    ]
+    node = _build_recommendations_node(db_session, _FailingClient(), "claude-sonnet-4-6")
+
+    with capture_logs() as logs:
+        update = node(state)
+
+    # Non-blocking: the run survives with no rewrites, and nothing is logged to agent_runs.
+    assert update["recommendations"] == []
+    assert any(log["event"] == "engine.recommendations_failed" for log in logs)
+    assert (
+        db_session.scalars(
+            select(AgentRun).where(AgentRun.agent_name == AgentName.recommendations)
+        ).first()
+        is None
+    )

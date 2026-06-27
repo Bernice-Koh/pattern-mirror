@@ -43,6 +43,20 @@ class JudgeScore:
 
 
 @dataclass(frozen=True)
+class FlagRecommendation:
+    """The Recommendations Agent's rewrites for one above-threshold flag.
+
+    ``alternatives`` is always 2-3 phrasings (never one "correct" answer, design spec §7),
+    and ``rationale`` is grounded in the flag's citation. Produced only for surfaced
+    contextual flags; the flag it concerns rides along so persistence can match it to its row.
+    """
+
+    flag: CandidateFlag
+    rationale: str
+    alternatives: list[str]
+
+
+@dataclass(frozen=True)
 class DriftReference:
     """The swapped reference corpus a drift run compares the document against.
 
@@ -59,9 +73,10 @@ class EngineState(TypedDict):
     Channels differ in how updates merge. ``candidate_flags`` *accumulates*: the
     dictionary and contextual stages each append, via ``accumulate_candidate_flags``.
     Every other channel *overwrites* (LangGraph's default last-value-wins): the Adjudicator
-    replaces ``verified_flags`` with its survivors, and the Judge replaces ``judge_scores``
-    wholesale. The identity and inputs (``analysis_run_id``, ``document_id``,
-    ``document_text``, ``doc_type``, ``region_code``) are set at init and not changed.
+    replaces ``verified_flags`` with its survivors, the Judge replaces ``judge_scores``, and
+    Recommendations replaces ``recommendations`` wholesale. The identity and inputs
+    (``analysis_run_id``, ``document_id``, ``document_text``, ``doc_type``, ``region_code``)
+    are set at init and not changed.
     """
 
     analysis_run_id: uuid.UUID
@@ -72,6 +87,7 @@ class EngineState(TypedDict):
     candidate_flags: Annotated[list[CandidateFlag], accumulate_candidate_flags]
     verified_flags: list[CandidateFlag]
     judge_scores: list[JudgeScore]
+    recommendations: list[FlagRecommendation]
     drift_reference: DriftReference | None
 
 
@@ -85,6 +101,7 @@ class StateUpdate(TypedDict, total=False):
     candidate_flags: list[CandidateFlag]
     verified_flags: list[CandidateFlag]
     judge_scores: list[JudgeScore]
+    recommendations: list[FlagRecommendation]
     drift_reference: DriftReference | None
 
 
@@ -107,6 +124,7 @@ def initial_state(
         candidate_flags=[],
         verified_flags=[],
         judge_scores=[],
+        recommendations=[],
         drift_reference=drift_reference,
     )
 

@@ -140,3 +140,32 @@ def test_format_sse_renders_a_flag_frame_from_a_persisted_flag(db_session: Sessi
     assert frame.startswith("event: flag\ndata: ")
     assert '"raw_span":"digital native"' in frame
     assert '"citation":' in frame
+    # A dictionary flag the Recommendations Agent never runs on serialises with a null field.
+    assert '"recommendations":null' in frame
+
+
+def test_format_sse_renders_recommendations_when_a_flag_has_them(db_session: Session) -> None:
+    user = User(
+        external_user_id="rec-frame-manager",
+        legal_name="Rec Frame Manager",
+        email="rec.frame@example.com",
+    )
+    db_session.add(user)
+    db_session.flush()
+    result = analyze_document(
+        db_session,
+        owner_id=user.id,
+        doc_type=DocType.jd,
+        content="We want a digital native.",
+    )
+    flag = result.flags[0]
+    flag.recommendations = {
+        "rationale": "Coded age bias.",
+        "alternatives": ["adaptable", "tech-savvy"],
+    }
+    db_session.flush()
+
+    frame = _format_sse(FlagSurfaced(flag=flag)).decode()
+
+    assert '"rationale":"Coded age bias."' in frame
+    assert '"adaptable"' in frame
