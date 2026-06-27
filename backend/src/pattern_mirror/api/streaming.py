@@ -98,8 +98,9 @@ async def analyze_stream(
 
     registry = get_run_registry()
     # Built here (network-free) and injected, so the engine layer stays free of settings;
-    # None when no key is configured, which runs the dictionary-only path.
-    contextual_client = build_instructor_client(get_settings())
+    # None when no key is configured, which runs the dictionary-only path. One client drives
+    # both Agent stages — the model is chosen per call.
+    client = build_instructor_client(get_settings())
 
     def event_source() -> Iterator[bytes]:
         for event in stream_analysis_events(
@@ -108,7 +109,8 @@ async def analyze_stream(
             content=request.content,
             doc_type=document.doc_type,
             registry=registry,
-            contextual_client=contextual_client,
+            contextual_client=client,
+            judge_client=client,
         ):
             yield _format_sse(event)
 
