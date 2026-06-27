@@ -24,7 +24,7 @@ from pattern_mirror.api.schemas import serialise_flag
 from pattern_mirror.core.config import get_settings
 from pattern_mirror.core.errors import DocumentNotFoundError
 from pattern_mirror.db.session import get_session
-from pattern_mirror.engine.contextual_pass import build_contextual_client
+from pattern_mirror.engine.llm_agent import build_instructor_client
 from pattern_mirror.models.documents import Document
 from pattern_mirror.models.identity import User
 from pattern_mirror.services.run_registry import get_run_registry
@@ -99,7 +99,7 @@ async def analyze_stream(
     registry = get_run_registry()
     # Built here (network-free) and injected, so the engine layer stays free of settings;
     # None when no key is configured, which runs the dictionary-only path.
-    contextual_client = build_contextual_client(get_settings())
+    contextual_client = build_instructor_client(get_settings())
 
     def event_source() -> Iterator[bytes]:
         for event in stream_analysis_events(

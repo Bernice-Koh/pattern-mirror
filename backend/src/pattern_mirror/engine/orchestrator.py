@@ -16,8 +16,6 @@ from sqlalchemy.orm import Session
 from pattern_mirror.core.config import get_settings
 from pattern_mirror.engine.adjudicator import adjudicate_flags
 from pattern_mirror.engine.contextual_pass import (
-    StructuredCompletionClient,
-    estimate_cost_usd,
     run_contextual_pass,
     to_candidate_flags,
 )
@@ -26,6 +24,7 @@ from pattern_mirror.engine.dictionary import (
     load_category_citations,
     match_dictionary,
 )
+from pattern_mirror.engine.llm_agent import StructuredCompletionClient, estimate_cost_usd
 from pattern_mirror.engine.state import EngineState, StateUpdate, log_transition
 from pattern_mirror.models.enums import AgentName
 from pattern_mirror.services.agent_runs import record_agent_run
@@ -156,7 +155,7 @@ def build_default_graph(
 
     ``contextual_client`` is injected rather than read from settings so the engine layer
     stays pure and tests stay deterministic: a caller passes the production client (built by
-    ``contextual_pass.build_contextual_client``), a test passes a fake, and ``None`` degrades
+    ``llm_agent.build_instructor_client``), a test passes a fake, and ``None`` degrades
     the contextual stage to a passthrough (dictionary-only). The Judge and Recommendations
     stages remain stubbed until #49/#50.
     """

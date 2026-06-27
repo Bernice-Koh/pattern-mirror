@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from pattern_mirror.engine.candidate_flag import CandidateFlag
-from pattern_mirror.engine.contextual_pass import StructuredCompletionClient
+from pattern_mirror.engine.llm_agent import StructuredCompletionClient
 from pattern_mirror.engine.orchestrator import build_default_graph
 from pattern_mirror.engine.state import initial_state
 from pattern_mirror.models.documents import AnalysisRun
