@@ -23,9 +23,10 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.llm_agent import StructuredCompletionClient
 from pattern_mirror.engine.orchestrator import build_default_graph
-from pattern_mirror.engine.state import JudgeScore, initial_state
+from pattern_mirror.engine.state import FlagRecommendation, JudgeScore, initial_state
 from pattern_mirror.models.documents import AnalysisRun
 from pattern_mirror.models.engine import Flag
 from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
@@ -69,14 +70,16 @@ def _persist_judge_scores(
     document_id: uuid.UUID,
     content: str,
     scores: list[JudgeScore],
-) -> list[Flag]:
+) -> tuple[list[Flag], dict[CandidateFlag, Flag]]:
     """Persist every scored flag (suppressed ones included) and return the surfaced ones.
 
     Log everything, suppress in UI: a below-threshold flag is written with ``suppressed=True``
     and its confidence, but is not returned for surfacing. The surfaced flags come back with
-    citations loaded for serialisation.
+    citations loaded, in document order, alongside a map from each surfaced candidate to its
+    persisted row so the Recommendations stage can attach rewrites to the right flag.
     """
     surfaced_ids: list[uuid.UUID] = []
+    flag_by_candidate: dict[CandidateFlag, Flag] = {}
     for score in scores:
         flag = build_flag(
             document_id=document_id,
@@ -90,9 +93,10 @@ def _persist_judge_scores(
         session.flush()
         if not score.suppressed:
             surfaced_ids.append(flag.id)
+            flag_by_candidate[score.flag] = flag
     if not surfaced_ids:
-        return []
-    return list(
+        return [], {}
+    surfaced = list(
         session.scalars(
             select(Flag)
             .where(Flag.id.in_(surfaced_ids))
@@ -100,6 +104,26 @@ def _persist_judge_scores(
             .order_by(Flag.start_offset)
         ).all()
     )
+    return surfaced, flag_by_candidate
+
+
+def _attach_recommendations(
+    flag_by_candidate: dict[CandidateFlag, Flag],
+    recommendations: list[FlagRecommendation],
+) -> None:
+    """Write each recommendation set onto its surfaced flag row (the caller commits).
+
+    Matched by the candidate the Judge persisted, so a rewrite lands on the exact flag it was
+    generated for; a recommendation whose flag did not surface (a superseded run) is skipped.
+    """
+    for recommendation in recommendations:
+        flag = flag_by_candidate.get(recommendation.flag)
+        if flag is None:
+            continue
+        flag.recommendations = {
+            "rationale": recommendation.rationale,
+            "alternatives": recommendation.alternatives,
+        }
 
 
 def stream_analysis_events(
@@ -111,16 +135,19 @@ def stream_analysis_events(
     registry: RunRegistry,
     contextual_client: StructuredCompletionClient | None = None,
     judge_client: StructuredCompletionClient | None = None,
+    recommendations_client: StructuredCompletionClient | None = None,
     region_code: str = _REGION_CODE,
 ) -> Iterator[StreamEvent]:
     """Run the engine over a document and yield an event per stage, then a terminal event.
 
     Persists a fresh ``AnalysisRun`` (trigger ``typing_pause``) and registers it as the
     current run for the document. Flags are persisted at the Judge stage carrying their
-    confidence and suppression, and committed immediately; only un-suppressed flags surface,
-    and only while this run is still the current one — a superseded run keeps logging every
-    flag but stops streaming. A stage failure is logged against the run, which is marked
-    ``failed``, and the stream still closes with a terminal event.
+    confidence and suppression, and committed immediately, but un-suppressed flags surface
+    only at the Recommendations stage, each carrying the rewrites generated for it — so the
+    client renders a flag together with its alternatives rather than mutating it later. Both
+    happen only while this run is still the current one: a superseded run keeps logging every
+    flag and its rewrites but stops streaming. A stage failure is logged against the run, which
+    is marked ``failed``, and the stream still closes with a terminal event.
 
     Args:
         session: An open session whose lifetime spans the whole stream (the caller owns
@@ -131,6 +158,8 @@ def stream_analysis_events(
         registry: The run registry that arbitrates supersede.
         contextual_client: The Contextual Pass client; ``None`` runs dictionary-only.
         judge_client: The Judge client; ``None`` passes every flag through ungated.
+        recommendations_client: The Recommendations client; ``None`` surfaces flags with no
+            rewrites.
         region_code: The lexicon region; SG for the MVP.
 
     Yields:
@@ -153,7 +182,10 @@ def stream_analysis_events(
     superseded = False
     try:
         graph = build_default_graph(
-            session, contextual_client=contextual_client, judge_client=judge_client
+            session,
+            contextual_client=contextual_client,
+            judge_client=judge_client,
+            recommendations_client=recommendations_client,
         )
         state = initial_state(
             analysis_run_id=run.id,
@@ -162,17 +194,24 @@ def stream_analysis_events(
             doc_type=doc_type,
             region_code=region_code,
         )
+        pending_surface: list[Flag] = []
+        flag_by_candidate: dict[CandidateFlag, Flag] = {}
         for chunk in graph.stream(state, stream_mode="updates"):
             for stage_name, update in chunk.items():
-                # In "updates" mode a node that writes no channel yields ``None``; only the
-                # Judge stage carries ``judge_scores``, so persistence happens once, there.
-                surfaced = _persist_judge_scores(
-                    session,
-                    run=run,
-                    document_id=document_id,
-                    content=content,
-                    scores=(update or {}).get("judge_scores", []),
-                )
+                # In "updates" mode a node that writes no channel yields ``None``. Flags are
+                # persisted when the Judge stage carries ``judge_scores`` but held back, then
+                # surfaced at the Recommendations stage with the rewrites attached there.
+                data = update or {}
+                if "judge_scores" in data:
+                    pending_surface, flag_by_candidate = _persist_judge_scores(
+                        session,
+                        run=run,
+                        document_id=document_id,
+                        content=content,
+                        scores=data["judge_scores"],
+                    )
+                if stage_name == "recommendations":
+                    _attach_recommendations(flag_by_candidate, data.get("recommendations", []))
                 session.commit()
 
                 # Supersede gates surfacing, not persistence: a newer run stops this one's
@@ -184,9 +223,11 @@ def stream_analysis_events(
                     continue
 
                 yield StageCompleted(stage=stage_name)
-                for flag in surfaced:
-                    flag_count += 1
-                    yield FlagSurfaced(flag=flag)
+                if stage_name == "recommendations":
+                    for flag in pending_surface:
+                        flag_count += 1
+                        yield FlagSurfaced(flag=flag)
+                    pending_surface = []
     except Exception:
         final_status = AnalysisRunStatus.failed
         session.rollback()

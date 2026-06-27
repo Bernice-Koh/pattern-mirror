@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
 from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
+from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
 from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
@@ -58,6 +59,19 @@ class _FakeJudgeClient:
     def __init__(self, result: JudgeResult) -> None:
         self._result = result
         self._completion = SimpleNamespace(usage=SimpleNamespace(input_tokens=70, output_tokens=15))
+
+    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+        return self._result, self._completion
+
+
+class _FakeRecommendationsClient:
+    """Deterministic stand-in for the Recommendations client: fixed rewrites, recorded usage."""
+
+    def __init__(self, result: RecommendationsResult) -> None:
+        self._result = result
+        self._completion = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=120, output_tokens=60)
+        )
 
     def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
         return self._result, self._completion
@@ -327,3 +341,60 @@ def test_above_threshold_contextual_flag_surfaces_with_its_confidence(
         )
     ).one()
     assert judge_run.analysis_run_id is not None
+
+
+def test_recommendations_attach_to_a_surfaced_contextual_flag(db_session: Session) -> None:
+    document = _document(db_session, content="We value a strong culture fit.")
+    judge = _FakeJudgeClient(
+        JudgeResult(verdicts=[JudgeVerdict(confidence=0.9, reasoning="clear")])
+    )
+    recommendations = _FakeRecommendationsClient(
+        RecommendationsResult(
+            recommendations=[
+                Recommendation(
+                    rationale="Vague 'fit' invites in-group bias.",
+                    alternatives=["shares our values", "aligns with the team"],
+                )
+            ]
+        )
+    )
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            contextual_client=_culture_fit_contextual(),
+            judge_client=judge,
+            recommendations_client=recommendations,
+        )
+    )
+
+    surfaced = [
+        event.flag
+        for event in events
+        if isinstance(event, FlagSurfaced) and event.flag.source_stage is FlagSourceStage.contextual
+    ]
+    assert [flag.raw_span for flag in surfaced] == ["culture fit"]
+    assert surfaced[0].recommendations == {
+        "rationale": "Vague 'fit' invites in-group bias.",
+        "alternatives": ["shares our values", "aligns with the team"],
+    }
+
+    persisted = db_session.scalars(
+        select(Flag).where(Flag.document_id == document.id, Flag.raw_span == "culture fit")
+    ).one()
+    assert persisted.recommendations["alternatives"] == [
+        "shares our values",
+        "aligns with the team",
+    ]
+
+    rec_run = db_session.scalars(
+        select(AgentRun).where(
+            AgentRun.document_id == document.id,
+            AgentRun.agent_name == AgentName.recommendations,
+        )
+    ).one()
+    assert rec_run.analysis_run_id is not None
