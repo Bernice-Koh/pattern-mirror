@@ -43,6 +43,20 @@ class JudgeScore:
 
 
 @dataclass(frozen=True)
+class FlagRecommendation:
+    """The Recommendations Agent's rewrites for one above-threshold flag.
+
+    ``alternatives`` is always 2-3 phrasings (never one "correct" answer, design spec §7),
+    and ``rationale`` is grounded in the flag's citation. Produced only for surfaced
+    contextual flags; the flag it concerns rides along so persistence can match it to its row.
+    """
+
+    flag: CandidateFlag
+    rationale: str
+    alternatives: list[str]
+
+
+@dataclass(frozen=True)
 class DriftReference:
     """The swapped reference corpus a drift run compares the document against.
 
