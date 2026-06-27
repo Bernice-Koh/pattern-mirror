@@ -72,7 +72,6 @@ class Flag(CreatedAtMixin, Base):
     end_offset: Mapped[int | None] = mapped_column(Integer)
     rationale: Mapped[dict[str, Any]] = mapped_column(JSONB)
     judge_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
-    judge_hallucination_risk: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     suppressed: Mapped[bool] = mapped_column(server_default=text("false"))
     suppressed_by_dismissal_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("flag_dismissals.id")
