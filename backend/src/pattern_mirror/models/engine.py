@@ -2,7 +2,8 @@
 
 Every flag the engine produces is stored, including suppressed ones
 ("log everything, suppress only in UI"). Judge scores are nullable because a
-flag only reaches the Judge if it survives the Adjudicator. Dismissals are a
+flag only reaches the Judge if it survives the Adjudicator, and recommendations
+because only above-threshold contextual flags get them. Dismissals are a
 separate entity (D6): flags are regenerated every run, so a dismissal suppresses
 many future flag rows by signature ``(document_id, rule_id, normalised_span,
 sentence_fingerprint)`` and has its own lifecycle (recheck flips ``active``; it
@@ -71,6 +72,7 @@ class Flag(CreatedAtMixin, Base):
     start_offset: Mapped[int | None] = mapped_column(Integer)
     end_offset: Mapped[int | None] = mapped_column(Integer)
     rationale: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    recommendations: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     judge_confidence: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
     suppressed: Mapped[bool] = mapped_column(server_default=text("false"))
     suppressed_by_dismissal_id: Mapped[uuid.UUID | None] = mapped_column(
