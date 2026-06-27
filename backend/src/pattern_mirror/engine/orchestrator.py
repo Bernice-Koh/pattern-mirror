@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from pattern_mirror.core.config import Settings, get_settings
 from pattern_mirror.engine.adjudicator import adjudicate_flags
 from pattern_mirror.engine.candidate_flag import CandidateFlag
+from pattern_mirror.engine.citations import load_citation_evidence
 from pattern_mirror.engine.contextual_pass import (
     run_contextual_pass,
     to_candidate_flags,
@@ -28,6 +29,10 @@ from pattern_mirror.engine.dictionary import (
 )
 from pattern_mirror.engine.judge import run_judge, to_judge_scores
 from pattern_mirror.engine.llm_agent import StructuredCompletionClient, estimate_cost_usd
+from pattern_mirror.engine.recommendations import (
+    run_recommendations,
+    to_flag_recommendations,
+)
 from pattern_mirror.engine.state import EngineState, JudgeScore, StateUpdate, log_transition
 from pattern_mirror.models.enums import AgentName, FlagSourceStage
 from pattern_mirror.services.agent_runs import record_agent_run
@@ -181,6 +186,77 @@ def _build_judge_node(
     return node
 
 
+def _build_recommendations_node(
+    session: Session, client: StructuredCompletionClient, model: str
+) -> EngineNode:
+    """Build the Recommendations node: a Sonnet 4.6 Agent that rewrites surfaced flags.
+
+    It runs on the un-suppressed *contextual* flags only — the ones the Judge passed above
+    threshold (design spec §7); dictionary flags bypass it (their stable rewrites are a curated
+    concern, not the non-deterministic Agent). Each rationale is anchored to the flag's cited
+    evidence, loaded here and passed by value. Recommendations are non-blocking: the flags are
+    already persisted and surfaced, so a failed call degrades to no rewrites rather than failing
+    the run (CONVENTIONS). Emits one ``FlagRecommendation`` per rewritten flag and logs the run.
+    """
+
+    def node(state: EngineState) -> StateUpdate:
+        flags = [
+            score.flag
+            for score in state["judge_scores"]
+            if score.flag.source_stage is FlagSourceStage.contextual and not score.suppressed
+        ]
+        if not flags:
+            update: StateUpdate = {"recommendations": []}
+            log_transition("recommendations", state["document_id"], update)
+            return update
+
+        evidence = load_citation_evidence(
+            session, [flag.citation_id for flag in flags if flag.citation_id is not None]
+        )
+        try:
+            run = run_recommendations(
+                client,
+                flags=flags,
+                evidence=evidence,
+                doc_type=state["doc_type"],
+                model=model,
+            )
+        except Exception as exc:
+            # Non-blocking: the flags already stand, so a rewrite failure must not fail the run.
+            _log.warning(
+                "engine.recommendations_failed",
+                document_id=str(state["document_id"]),
+                error=str(exc),
+            )
+            update = {"recommendations": []}
+            log_transition("recommendations", state["document_id"], update)
+            return update
+
+        record_agent_run(
+            session,
+            agent_name=AgentName.recommendations,
+            model=model,
+            input={
+                "doc_type": state["doc_type"].value,
+                "flags": [
+                    {"category": flag.category.value, "raw_span": flag.raw_span} for flag in flags
+                ],
+            },
+            output=run.result.model_dump(mode="json"),
+            document_id=state["document_id"],
+            analysis_run_id=state["analysis_run_id"],
+            prompt_tokens=run.prompt_tokens,
+            completion_tokens=run.completion_tokens,
+            cost_usd=estimate_cost_usd(model, run.prompt_tokens, run.completion_tokens),
+            latency_ms=run.latency_ms,
+        )
+        update = {"recommendations": to_flag_recommendations(flags, run.result)}
+        log_transition("recommendations", state["document_id"], update)
+        return update
+
+    return node
+
+
 def build_engine_graph(
     *,
     dictionary_node: EngineNode,
@@ -219,6 +295,7 @@ def build_default_graph(
     *,
     contextual_client: StructuredCompletionClient | None = None,
     judge_client: StructuredCompletionClient | None = None,
+    recommendations_client: StructuredCompletionClient | None = None,
 ) -> CompiledStateGraph[EngineState]:
     """The production graph: real dictionary + adjudicator, plus the Agent stages when wired.
 
@@ -226,8 +303,8 @@ def build_default_graph(
     pure and tests stay deterministic: a caller passes the production client (built by
     ``llm_agent.build_instructor_client``), a test passes a fake, and ``None`` degrades that
     stage — the Contextual Pass to a passthrough (dictionary-only), the Judge to scoring
-    nothing (every flag ungated). The Judge always runs because it is the persistence point
-    for the streaming path. Recommendations remains stubbed until #50.
+    nothing (every flag ungated), Recommendations to producing no rewrites. The Judge always
+    runs because it is the persistence point for the streaming path.
     """
     settings = get_settings()
 
@@ -243,9 +320,16 @@ def build_default_graph(
 
     judge_node = _build_judge_node(session, judge_client, settings.judge_model, settings)
 
+    if recommendations_client is not None:
+        recommendations_node = _build_recommendations_node(
+            session, recommendations_client, settings.analysis_model
+        )
+    else:
+        recommendations_node = _passthrough_node("recommendations")
+
     return build_engine_graph(
         dictionary_node=dictionary_node,
         contextual_node=contextual_node,
         judge_node=judge_node,
-        recommendations_node=_passthrough_node("recommendations"),
+        recommendations_node=recommendations_node,
     )
