@@ -111,7 +111,7 @@ def test_candidate_flags_accumulate_across_producing_stages() -> None:
 
 
 def test_judge_scores_flow_through_the_overwrite_channel() -> None:
-    score = JudgeScore(flag=_flag("aggressive"), confidence=0.9, hallucination_risk=0.1)
+    score = JudgeScore(flag=_flag("aggressive"), confidence=0.9)
     graph = build_engine_graph(
         dictionary_node=_fake_stage("dictionary", {"candidate_flags": [_flag("aggressive")]}),
         contextual_node=_passthrough("contextual"),

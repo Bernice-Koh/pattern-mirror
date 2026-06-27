@@ -21,3 +21,12 @@ class DocumentNotFoundError(PatternMirrorError):
     def __init__(self, document_id: object) -> None:
         super().__init__(f"Document not found: {document_id}")
         self.document_id = document_id
+
+
+class JudgeVerdictCountError(PatternMirrorError):
+    """The Judge returned a different number of verdicts than the flags it was asked to score."""
+
+    def __init__(self, expected: int, received: int) -> None:
+        super().__init__(f"Judge returned {received} verdicts for {expected} flags")
+        self.expected = expected
+        self.received = received
