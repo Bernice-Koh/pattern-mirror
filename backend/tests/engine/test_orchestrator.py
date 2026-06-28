@@ -16,12 +16,14 @@ from structlog.testing import capture_logs
 from pattern_mirror.core.config import Settings
 from pattern_mirror.engine.adjudicator import RejectionReason
 from pattern_mirror.engine.candidate_flag import CandidateFlag
+from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
 from pattern_mirror.engine.orchestrator import (
     EngineNode,
     _adjudicator_node,
     _build_judge_node,
     _build_recommendations_node,
+    _build_suppression_node,
     build_default_graph,
     build_engine_graph,
 )
@@ -35,6 +37,7 @@ from pattern_mirror.engine.state import (
 )
 from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.documents import AnalysisRun, Document
+from pattern_mirror.models.engine import FlagDismissal
 from pattern_mirror.models.enums import (
     AgentName,
     AnalysisTrigger,
@@ -95,6 +98,7 @@ def test_graph_runs_every_stage_in_order() -> None:
     graph = build_engine_graph(
         dictionary_node=_passthrough("dictionary"),
         contextual_node=_passthrough("contextual"),
+        suppression_node=_passthrough("suppression"),
         judge_node=_passthrough("judge"),
         recommendations_node=_passthrough("recommendations"),
     )
@@ -103,7 +107,14 @@ def test_graph_runs_every_stage_in_order() -> None:
         graph.invoke(_state("Clean text."))
 
     stages = [log["stage"] for log in logs if log["event"] == "engine.transition"]
-    assert stages == ["dictionary", "contextual", "adjudicator", "judge", "recommendations"]
+    assert stages == [
+        "dictionary",
+        "contextual",
+        "adjudicator",
+        "suppression",
+        "judge",
+        "recommendations",
+    ]
 
 
 def test_candidate_flags_accumulate_across_producing_stages() -> None:
@@ -114,6 +125,7 @@ def test_candidate_flags_accumulate_across_producing_stages() -> None:
             {"candidate_flags": [_flag("aggressive", stage=FlagSourceStage.dictionary)]},
         ),
         contextual_node=_fake_stage("contextual", {"candidate_flags": [_flag("culture fit")]}),
+        suppression_node=_passthrough("suppression"),
         judge_node=_passthrough("judge"),
         recommendations_node=_passthrough("recommendations"),
     )
@@ -132,6 +144,7 @@ def test_judge_scores_flow_through_the_overwrite_channel() -> None:
     graph = build_engine_graph(
         dictionary_node=_fake_stage("dictionary", {"candidate_flags": [_flag("aggressive")]}),
         contextual_node=_passthrough("contextual"),
+        suppression_node=_passthrough("suppression"),
         judge_node=_fake_stage("judge", {"judge_scores": [score]}),
         recommendations_node=_passthrough("recommendations"),
     )
@@ -145,6 +158,7 @@ def test_hallucinated_flag_is_dropped_before_the_judge() -> None:
     graph = build_engine_graph(
         dictionary_node=_passthrough("dictionary"),
         contextual_node=_fake_stage("contextual", {"candidate_flags": [_flag("a culture fit")]}),
+        suppression_node=_passthrough("suppression"),
         judge_node=_passthrough("judge"),
         recommendations_node=_passthrough("recommendations"),
     )
@@ -155,6 +169,50 @@ def test_hallucinated_flag_is_dropped_before_the_judge() -> None:
     assert final["verified_flags"] == []
     rejections = [log for log in logs if log["event"] == "engine.flag_rejected"]
     assert rejections[0]["reason"] is RejectionReason.span_not_in_source
+
+
+@pytest.mark.db
+def test_suppression_node_routes_a_dismissed_flag_off_the_verified_channel(
+    db_session: Session,
+) -> None:
+    user = User(
+        external_user_id=f"suppress-{uuid.uuid4()}",
+        legal_name="Suppress Manager",
+        email=f"{uuid.uuid4()}@example.test",
+    )
+    db_session.add(user)
+    db_session.flush()
+    document = Document(owner_id=user.id, doc_type=DocType.jd, content="text")
+    db_session.add(document)
+    db_session.flush()
+
+    content = "We want an aggressive leader."
+    start = content.index("aggressive")
+    end = start + len("aggressive")
+    flag = CandidateFlag(
+        source_stage=FlagSourceStage.contextual,
+        category=BiasCategory.gender,
+        raw_span="aggressive",
+        start_offset=start,
+        end_offset=end,
+    )
+    dismissal = FlagDismissal(
+        document_id=document.id,
+        rule_id=None,
+        normalised_span="aggressive",
+        sentence_fingerprint=compute_sentence_fingerprint(content, start, end),
+    )
+    db_session.add(dismissal)
+    db_session.flush()
+
+    state = _state(content)
+    state["document_id"] = document.id
+    state["verified_flags"] = [flag]
+
+    update = _build_suppression_node(db_session)(state)
+
+    assert update["verified_flags"] == []
+    assert [item.dismissal_id for item in update["dismissal_suppressed_flags"]] == [dismissal.id]
 
 
 @pytest.mark.db

@@ -1,23 +1,22 @@
 """Deterministic sentence fingerprints for document-scoped flag dismissals.
 
-A dismissal suppresses a flag on future runs by signature, one component of which is
-the fingerprint of the sentence the flag sits in: an edit elsewhere in the document
-must not resurrect a dismissed flag, while editing the sentence itself should. The
-Dictionary Service writes this when persisting flags; the dismissal logic later reads
-it. Both must call this one function so their fingerprints agree.
+One component of a dismissal's signature (design spec §12). Flag persistence and the
+dismissal lookup must call this one function so their fingerprints agree.
 """
 
 import hashlib
+
+from pattern_mirror.engine.lemmatiser import lemmatise
 
 _SENTENCE_TERMINATORS = ".!?"
 
 
 def compute_sentence_fingerprint(text: str, start: int, end: int) -> str:
-    """Return a stable fingerprint of the sentence containing ``text[start:end]``.
+    """Return the lemma-bag fingerprint of the sentence containing ``text[start:end]``.
 
-    The sentence is the span between the nearest terminators (``.!?``) on either side
-    of the offsets, normalised to be robust to casing and whitespace, then hashed. Equal
-    sentences yield equal fingerprints regardless of where in the document they appear.
+    The sentence is the span between the nearest terminators (``.!?``) around the offsets,
+    reduced to its sorted content lemmas before hashing. Casing, punctuation, inflection, and
+    word order are immaterial; a content-word change shifts the hash (design spec §12).
 
     Args:
         text: The full source document.
@@ -25,10 +24,10 @@ def compute_sentence_fingerprint(text: str, start: int, end: int) -> str:
         end: End offset (exclusive) of the flagged span.
 
     Returns:
-        A 64-character hex SHA-256 digest of the normalised sentence.
+        A 64-character hex SHA-256 digest of the sentence's sorted lemma bag.
     """
     left = max((text.rfind(term, 0, start) for term in _SENTENCE_TERMINATORS), default=-1)
     right_ends = [pos for term in _SENTENCE_TERMINATORS if (pos := text.find(term, end)) != -1]
     right = min(right_ends) + 1 if right_ends else len(text)
-    sentence = " ".join(text[left + 1 : right].lower().split())
-    return hashlib.sha256(sentence.encode("utf-8")).hexdigest()
+    lemma_bag = " ".join(sorted(lemmatise(text[left + 1 : right])))
+    return hashlib.sha256(lemma_bag.encode("utf-8")).hexdigest()

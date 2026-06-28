@@ -16,11 +16,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
+from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
 from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
 from pattern_mirror.models.audit import AgentRun
+from pattern_mirror.models.dictionary import Dictionary
 from pattern_mirror.models.documents import AnalysisRun, Document
-from pattern_mirror.models.engine import Flag
+from pattern_mirror.models.engine import Flag, FlagDismissal
 from pattern_mirror.models.enums import (
     AgentName,
     AnalysisRunStatus,
@@ -135,6 +137,86 @@ def test_stages_stream_then_a_verified_flag_then_a_terminal_done(db_session: Ses
 
     persisted = db_session.scalars(select(Flag).where(Flag.document_id == document.id)).all()
     assert [flag.raw_span for flag in persisted] == ["digital native"]
+
+
+def _digital_native_rule(session: Session) -> Dictionary:
+    return session.scalars(
+        select(Dictionary).where(
+            Dictionary.lemma_key == "digital native", Dictionary.region_code == "SG"
+        )
+    ).one()
+
+
+def test_a_dismissed_flag_is_persisted_suppressed_with_its_reference_not_surfaced(
+    db_session: Session,
+) -> None:
+    document = _document(db_session)
+    rule = _digital_native_rule(db_session)
+    start = _BIASED_TEXT.index("digital native")
+    dismissal = FlagDismissal(
+        document_id=document.id,
+        rule_id=rule.id,
+        normalised_span="digital native",
+        sentence_fingerprint=compute_sentence_fingerprint(
+            _BIASED_TEXT, start, start + len("digital native")
+        ),
+    )
+    db_session.add(dismissal)
+    db_session.flush()
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+        )
+    )
+
+    # Suppress in UI: the dismissed flag surfaces to nobody, and the run reports no flags.
+    assert not any(isinstance(event, FlagSurfaced) for event in events)
+    terminal = events[-1]
+    assert isinstance(terminal, RunCompleted)
+    assert terminal.flag_count == 0
+
+    # Log everything: it is still persisted, marked suppressed and pointing at the dismissal.
+    persisted = db_session.scalars(select(Flag).where(Flag.document_id == document.id)).one()
+    assert persisted.raw_span == "digital native"
+    assert persisted.suppressed is True
+    assert persisted.suppressed_by_dismissal_id == dismissal.id
+    assert persisted.judge_confidence is None
+
+
+def test_a_dismissal_in_a_different_context_does_not_suppress(db_session: Session) -> None:
+    document = _document(db_session)
+    rule = _digital_native_rule(db_session)
+    # A dismissal for the same span but a fingerprint from some other sentence.
+    db_session.add(
+        FlagDismissal(
+            document_id=document.id,
+            rule_id=rule.id,
+            normalised_span="digital native",
+            sentence_fingerprint="0" * 64,
+        )
+    )
+    db_session.flush()
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+        )
+    )
+
+    surfaced = [event.flag.raw_span for event in events if isinstance(event, FlagSurfaced)]
+    assert surfaced == ["digital native"]
+    persisted = db_session.scalars(select(Flag).where(Flag.document_id == document.id)).one()
+    assert persisted.suppressed is False
+    assert persisted.suppressed_by_dismissal_id is None
 
 
 def test_clean_text_streams_no_flags_and_completes(db_session: Session) -> None:
