@@ -24,11 +24,13 @@ from pattern_mirror.engine.orchestrator import (
     _build_judge_node,
     _build_recommendations_node,
     _build_suppression_node,
+    _verdict_node,
     build_default_graph,
     build_engine_graph,
 )
 from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
 from pattern_mirror.engine.state import (
+    DictionaryVerdict,
     EngineState,
     JudgeScore,
     StateUpdate,
@@ -44,6 +46,7 @@ from pattern_mirror.models.enums import (
     BiasCategory,
     DocType,
     FlagSourceStage,
+    FlagVerdict,
 )
 from pattern_mirror.models.identity import User
 
@@ -94,6 +97,43 @@ def test_adjudicator_node_keeps_verbatim_flags_and_logs_rejections() -> None:
     assert rejections[0]["document_id"] == str(state["document_id"])
 
 
+def test_verdict_node_suppresses_cleared_flags_and_keeps_the_unacceptable() -> None:
+    content = "We want a young, mature worker."
+    young = CandidateFlag(
+        source_stage=FlagSourceStage.dictionary,
+        category=BiasCategory.age,
+        raw_span="young",
+        start_offset=10,
+        end_offset=15,
+    )
+    mature = CandidateFlag(
+        source_stage=FlagSourceStage.dictionary,
+        category=BiasCategory.age,
+        raw_span="mature",
+        start_offset=17,
+        end_offset=23,
+    )
+    state = _state(content)
+    state["verified_flags"] = [young, mature]
+    state["dictionary_verdicts"] = [
+        DictionaryVerdict(
+            start_offset=10, end_offset=15, verdict=FlagVerdict.unacceptable, reasoning="age proxy"
+        ),
+        DictionaryVerdict(
+            start_offset=17, end_offset=23, verdict=FlagVerdict.acceptable, reasoning="not a person"
+        ),
+    ]
+
+    with capture_logs() as logs:
+        update = _verdict_node(state)
+
+    assert [flag.raw_span for flag in update["verified_flags"]] == ["young"]
+    assert update["verified_flags"][0].verdict is FlagVerdict.unacceptable
+    assert [flag.raw_span for flag in update["verdict_suppressed_flags"]] == ["mature"]
+    suppressions = [log for log in logs if log["event"] == "engine.flag_verdict_suppressed"]
+    assert len(suppressions) == 1
+
+
 def test_graph_runs_every_stage_in_order() -> None:
     graph = build_engine_graph(
         dictionary_node=_passthrough("dictionary"),
@@ -111,6 +151,7 @@ def test_graph_runs_every_stage_in_order() -> None:
         "dictionary",
         "contextual",
         "adjudicator",
+        "verdict",
         "suppression",
         "judge",
         "recommendations",

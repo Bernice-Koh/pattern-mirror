@@ -12,7 +12,7 @@ from typing import Annotated, TypedDict
 import structlog
 
 from pattern_mirror.engine.candidate_flag import CandidateFlag
-from pattern_mirror.models.enums import DocType
+from pattern_mirror.models.enums import DocType, FlagVerdict
 
 _log = structlog.get_logger("pattern_mirror.engine.state")
 
@@ -70,6 +70,20 @@ class SuppressedFlag:
 
 
 @dataclass(frozen=True)
+class DictionaryVerdict:
+    """The Contextual Pass's GDOR ruling on one dictionary flag, keyed by its resolved span.
+
+    Carried from the Contextual Pass to the Verdict node, which cannot reach back into the
+    dictionary flags directly: the candidate-flag channel is append-only.
+    """
+
+    start_offset: int
+    end_offset: int
+    verdict: FlagVerdict
+    reasoning: str
+
+
+@dataclass(frozen=True)
 class DriftReference:
     """The swapped reference corpus a drift run compares the document against.
 
@@ -86,10 +100,12 @@ class EngineState(TypedDict):
     Channels differ in how updates merge. ``candidate_flags`` *accumulates*: the
     dictionary and contextual stages each append, via ``accumulate_candidate_flags``.
     Every other channel *overwrites* (LangGraph's default last-value-wins): the Adjudicator
-    replaces ``verified_flags`` with its survivors, the suppression Module overwrites it again
-    with the un-dismissed subset and fills ``dismissal_suppressed_flags``, the Judge replaces
-    ``judge_scores``, and Recommendations replaces ``recommendations`` wholesale. The identity
-    and inputs
+    replaces ``verified_flags`` with its survivors, the Verdict node overwrites it with the
+    flags the Contextual Pass ruled ``unacceptable`` and fills ``verdict_suppressed_flags``,
+    the suppression Module overwrites it again with the un-dismissed subset and fills
+    ``dismissal_suppressed_flags``, the Judge replaces ``judge_scores``, and Recommendations
+    replaces ``recommendations`` wholesale. ``dictionary_verdicts`` carries the Contextual
+    Pass's rulings forward to the Verdict node. The identity and inputs
     (``analysis_run_id``, ``document_id``, ``document_text``, ``doc_type``, ``region_code``)
     are set at init and not changed.
     """
@@ -100,7 +116,9 @@ class EngineState(TypedDict):
     doc_type: DocType
     region_code: str
     candidate_flags: Annotated[list[CandidateFlag], accumulate_candidate_flags]
+    dictionary_verdicts: list[DictionaryVerdict]
     verified_flags: list[CandidateFlag]
+    verdict_suppressed_flags: list[CandidateFlag]
     dismissal_suppressed_flags: list[SuppressedFlag]
     judge_scores: list[JudgeScore]
     recommendations: list[FlagRecommendation]
@@ -115,7 +133,9 @@ class StateUpdate(TypedDict, total=False):
     """
 
     candidate_flags: list[CandidateFlag]
+    dictionary_verdicts: list[DictionaryVerdict]
     verified_flags: list[CandidateFlag]
+    verdict_suppressed_flags: list[CandidateFlag]
     dismissal_suppressed_flags: list[SuppressedFlag]
     judge_scores: list[JudgeScore]
     recommendations: list[FlagRecommendation]
@@ -139,7 +159,9 @@ def initial_state(
         doc_type=doc_type,
         region_code=region_code,
         candidate_flags=[],
+        dictionary_verdicts=[],
         verified_flags=[],
+        verdict_suppressed_flags=[],
         dismissal_suppressed_flags=[],
         judge_scores=[],
         recommendations=[],

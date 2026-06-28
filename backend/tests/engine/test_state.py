@@ -61,6 +61,8 @@ def test_candidate_flags_channel_accumulates_scores_channel_overwrites() -> None
     assert accumulate_candidate_flags in hints["candidate_flags"].__metadata__
     assert not hasattr(hints["judge_scores"], "__metadata__")
     assert not hasattr(hints["dismissal_suppressed_flags"], "__metadata__")
+    assert not hasattr(hints["verdict_suppressed_flags"], "__metadata__")
+    assert not hasattr(hints["dictionary_verdicts"], "__metadata__")
 
 
 def test_log_transition_records_document_id_and_the_delta() -> None:
