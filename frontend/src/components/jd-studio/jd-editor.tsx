@@ -6,7 +6,11 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react'
+import type {
+  CSSProperties,
+  FocusEvent as ReactFocusEvent,
+  MouseEvent as ReactMouseEvent,
+} from 'react'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -149,7 +153,9 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
       [],
     )
 
-    function handleMouseOver(event: ReactMouseEvent<HTMLDivElement>) {
+    function handleHover(
+      event: ReactMouseEvent<HTMLDivElement> | ReactFocusEvent<HTMLDivElement>,
+    ) {
       const target = event.target as HTMLElement
       const span = target.closest('.flag-dict, .flag-context')
       if (span instanceof HTMLElement) {
@@ -173,7 +179,12 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
     }
 
     return (
-      <div onMouseOver={handleMouseOver} onMouseLeave={scheduleClose}>
+      <div
+        onMouseOver={handleHover}
+        onFocus={handleHover}
+        onMouseLeave={scheduleClose}
+        onBlur={scheduleClose}
+      >
         <EditorContent editor={editor} />
         {hover && (
           <FlagPopover

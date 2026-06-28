@@ -3,9 +3,9 @@ import { cn } from '@/lib/cn'
 
 interface SuggestionChipProps {
   /** Highlighted as the pick that Apply will use. */
-  selected?: boolean
-  onClick?: () => void
-  children: ReactNode
+  readonly selected?: boolean
+  readonly onClick?: () => void
+  readonly children: ReactNode
 }
 
 /** Alternative-phrasing pill shared by the flag card and popover. Metrics mirror the
