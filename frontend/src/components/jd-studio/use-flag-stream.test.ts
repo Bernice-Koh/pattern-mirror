@@ -2,14 +2,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import type { CitedFlag, FlagSourceStage } from '@/lib/analyze-contract'
 import type { StreamEvent } from '@/lib/stream-contract'
-import { streamAnalysis } from '@/lib/stream-client'
+import { recheckAnalysis, streamAnalysis } from '@/lib/stream-client'
 import { useFlagStream } from './use-flag-stream'
 
 const STREAM_IDLE_MS = 3000
 
 let streamEvents: StreamEvent[] = []
+let recheckEvents: StreamEvent[] = []
 let keepOpen = false
 const capturedSignals: (AbortSignal | undefined)[] = []
+const recheckSignals: (AbortSignal | undefined)[] = []
 
 vi.mock('@/lib/stream-client', () => ({
   streamAnalysis: vi.fn(async function* (
@@ -20,6 +22,14 @@ vi.mock('@/lib/stream-client', () => ({
     for (const event of streamEvents) yield event
     // Park an in-flight run so abort-on-resume is observable.
     if (keepOpen) await new Promise<void>(() => {})
+  }),
+  recheckAnalysis: vi.fn(async function* (
+    _documentId: string,
+    _content: string,
+    signal?: AbortSignal,
+  ): AsyncGenerator<StreamEvent> {
+    recheckSignals.push(signal)
+    for (const event of recheckEvents) yield event
   }),
 }))
 
@@ -54,13 +64,23 @@ async function idle(ms = STREAM_IDLE_MS): Promise<void> {
   })
 }
 
+/** Drain the manual re-check stream's microtasks (no real delay to advance). */
+async function flush(): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(0)
+  })
+}
+
 describe('useFlagStream', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     streamEvents = []
+    recheckEvents = []
     keepOpen = false
     capturedSignals.length = 0
+    recheckSignals.length = 0
     vi.mocked(streamAnalysis).mockClear()
+    vi.mocked(recheckAnalysis).mockClear()
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -88,7 +108,7 @@ describe('useFlagStream', () => {
     act(() => rerender({ t: 'an aggressive leader' }))
     await idle()
 
-    expect(result.current.map((f) => f.id)).toEqual(['ctx-1'])
+    expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-1'])
   })
 
   it('does not open a stream until the idle delay elapses', async () => {
@@ -144,12 +164,40 @@ describe('useFlagStream', () => {
 
     act(() => rerender({ t: 'first' }))
     await idle()
-    expect(result.current.map((f) => f.id)).toEqual(['ctx-1'])
+    expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-1'])
 
     streamEvents = [flagEvent('ctx-2', 'contextual')]
     act(() => rerender({ t: 'second' }))
     await idle()
 
-    expect(result.current.map((f) => f.id)).toEqual(['ctx-2'])
+    expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-2'])
+  })
+
+  it('re-check runs the recheck stream into the same contextual accumulator', async () => {
+    recheckEvents = [
+      flagEvent('dict-1', 'dictionary'),
+      flagEvent('ctx-9', 'contextual'),
+      { type: 'done', analysis_run_id: 'r', status: 'complete', flag_count: 2 },
+    ]
+    const { result } = renderHook(() => useFlagStream('doc-1', 'text'))
+
+    act(() => result.current.recheck())
+    await flush()
+
+    // Dictionary flags are ignored here (Layer 1 renders those); contextual ones surface.
+    expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-9'])
+    expect(result.current.isRechecking).toBe(false)
+    expect(recheckAnalysis).toHaveBeenCalledOnce()
+  })
+
+  it('re-check does nothing without a document id', async () => {
+    recheckEvents = [flagEvent('ctx-9', 'contextual')]
+    const { result } = renderHook(() => useFlagStream(null, 'text'))
+
+    act(() => result.current.recheck())
+    await flush()
+
+    expect(recheckAnalysis).not.toHaveBeenCalled()
+    expect(result.current.contextualFlags).toEqual([])
   })
 })

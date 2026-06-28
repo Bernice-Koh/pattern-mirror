@@ -17,6 +17,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/analyze': 'http://localhost:8000',
+      '/documents': 'http://localhost:8000',
+      '/flags': 'http://localhost:8000',
     },
   },
   test: {

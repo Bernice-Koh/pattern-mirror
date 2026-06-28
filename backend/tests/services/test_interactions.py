@@ -11,7 +11,10 @@ from pattern_mirror.models.engine import Flag, FlagDismissal, FlagInteraction
 from pattern_mirror.models.enums import DocType, FlagInteractionKind
 from pattern_mirror.models.identity import User
 from pattern_mirror.services.analysis import analyze_document
-from pattern_mirror.services.interactions import record_interaction
+from pattern_mirror.services.interactions import (
+    deactivate_document_dismissals,
+    record_interaction,
+)
 
 pytestmark = pytest.mark.db
 
@@ -137,3 +140,33 @@ def test_a_missing_flag_is_not_found(db_session: Session) -> None:
         record_interaction(
             db_session, flag_id=uuid.uuid4(), owner_id=owner.id, kind=FlagInteractionKind.accept
         )
+
+
+def test_recheck_deactivates_all_of_a_documents_active_dismissals(db_session: Session) -> None:
+    owner = _manager(db_session, "recheck")
+    flag = _flag_on_a_document(db_session, owner)
+    record_interaction(
+        db_session, flag_id=flag.id, owner_id=owner.id, kind=FlagInteractionKind.dismiss
+    )
+
+    count = deactivate_document_dismissals(db_session, flag.document_id)
+
+    assert count == 1
+    dismissals = _dismissals_for(db_session, flag)
+    assert all(d.active is False for d in dismissals)
+
+
+def test_recheck_leaves_another_documents_dismissals_untouched(db_session: Session) -> None:
+    owner = _manager(db_session, "recheck-scope")
+    mine = _flag_on_a_document(db_session, owner)
+    other = _flag_on_a_document(db_session, owner)
+    record_interaction(
+        db_session, flag_id=mine.id, owner_id=owner.id, kind=FlagInteractionKind.dismiss
+    )
+    record_interaction(
+        db_session, flag_id=other.id, owner_id=owner.id, kind=FlagInteractionKind.dismiss
+    )
+
+    deactivate_document_dismissals(db_session, mine.document_id)
+
+    assert _dismissals_for(db_session, other)[0].active is True

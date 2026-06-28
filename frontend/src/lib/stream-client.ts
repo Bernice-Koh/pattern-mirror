@@ -1,8 +1,8 @@
-/** Client for the /analyze/stream endpoint: Layer 2 of JD Studio's two-trigger model.
- *  POSTs the document's current text and yields the engine's flags as each stage
- *  completes, parsed from Server-Sent Events. The transport is POST (not native
- *  EventSource) so the text rides in the body and an AbortSignal cancels the stream
- *  when the manager resumes typing. */
+/** Clients for the engine's two SSE endpoints: Layer 2's typing-pause stream
+ *  (/analyze/stream) and the manual re-check (/documents/{id}/recheck). Both POST the
+ *  document's current text and yield the engine's flags as each stage completes, parsed
+ *  from Server-Sent Events. POST (not native EventSource) so the text rides in the body
+ *  and an AbortSignal cancels the stream when the manager resumes typing. */
 
 import { API_BASE_URL } from '@/lib/api'
 import type { CitedFlag } from '@/lib/analyze-contract'
@@ -53,19 +53,19 @@ function parseFrame(raw: string): StreamEvent | null {
   }
 }
 
-/** Run the full engine over the document and yield each flag as its stage verifies it.
- *  `signal` aborts the in-flight stream so a resumed keystroke cancels a stale run;
- *  the rejection it raises (an AbortError) is the caller's signal to stop, not an error.
+/** POST a JSON body and yield each SSE event the response streams back. Shared by the
+ *  typing-pause and re-check clients so frame parsing lives in one place.
  *
  *  Throws StreamError on a non-OK response. */
-export async function* streamAnalysis(
-  request: AnalyzeStreamRequest,
+async function* streamSse(
+  path: string,
+  body: unknown,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  const response = await fetch(`${API_BASE_URL}/analyze/stream`, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(request),
+    body: JSON.stringify(body),
     signal,
   })
   if (!response.ok) throw new StreamError(response.status)
@@ -91,4 +91,29 @@ export async function* streamAnalysis(
 
   const tail = parseFrame(buffer)
   if (tail) yield tail
+}
+
+/** Run the full engine over the document and yield each flag as its stage verifies it.
+ *  `signal` aborts the in-flight stream so a resumed keystroke cancels a stale run;
+ *  the rejection it raises (an AbortError) is the caller's signal to stop, not an error.
+ *
+ *  Throws StreamError on a non-OK response. */
+export function streamAnalysis(
+  request: AnalyzeStreamRequest,
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent> {
+  return streamSse('/analyze/stream', request, signal)
+}
+
+/** Clear the document's dismissals and stream a fresh engine run, surfacing every flag —
+ *  including ones a prior run suppressed by dismissal. The manual counterpart to
+ *  streamAnalysis, for a clean pass after a major rewrite.
+ *
+ *  Throws StreamError on a non-OK response. */
+export function recheckAnalysis(
+  documentId: string,
+  content: string,
+  signal?: AbortSignal,
+): AsyncGenerator<StreamEvent> {
+  return streamSse(`/documents/${documentId}/recheck`, { content }, signal)
 }

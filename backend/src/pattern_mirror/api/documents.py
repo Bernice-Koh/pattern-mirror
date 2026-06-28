@@ -1,13 +1,12 @@
-"""The /analyze/stream endpoint: stream the full engine run as Server-Sent Events.
+"""Document-scoped endpoints. For now: the manual re-check (design spec §12).
 
-Layer 2 of JD Studio's two-trigger model (design spec §3, §12). The client opens this
-after a typing pause; the backend drives the engine and streams flags as each stage
-verifies them. SSE (not WebSocket) because the stream is one-directional server -> client.
-The handler is thin: it validates ownership, then translates the streaming service's domain
-events into SSE frames — the engine and persistence logic stay in ``services``.
+``POST /documents/{doc_id}/recheck`` gives the manager a clean pass after a major rewrite:
+it clears the document's active dismissals, then streams a fresh engine run so every flag —
+including ones a prior run dismissal-suppressed — surfaces again. The Judge gate and verdict
+suppression still apply; re-check resets dismissals only.
 
-The transport is POST (not native ``EventSource``) so the current document text rides in
-the body and the client can abort the stream with an ``AbortSignal`` when typing resumes.
+Like ``/analyze/stream``, the transport is POST with the current text in the body (so it
+rides ahead of autosave) and SSE for the one-directional server -> client stream.
 """
 
 import uuid
@@ -26,46 +25,52 @@ from pattern_mirror.core.errors import DocumentNotFoundError
 from pattern_mirror.db.session import get_session
 from pattern_mirror.engine.llm_agent import build_instructor_client
 from pattern_mirror.models.documents import Document
+from pattern_mirror.models.enums import AnalysisTrigger
 from pattern_mirror.models.identity import User
+from pattern_mirror.services.interactions import deactivate_document_dismissals
 from pattern_mirror.services.run_registry import get_run_registry
 from pattern_mirror.services.streaming_analysis import stream_analysis_events
 
-router = APIRouter(tags=["analyze"])
+router = APIRouter(tags=["documents"])
 
 
-class AnalyzeStreamRequest(BaseModel):
-    """A request to stream the full engine run over an existing document's current text."""
+class RecheckRequest(BaseModel):
+    """A request to re-check a document against its current text."""
 
-    document_id: uuid.UUID
     content: str
 
 
 @router.post(
-    "/analyze/stream",
-    summary="Stream the full engine run for a document as Server-Sent Events",
+    "/documents/{doc_id}/recheck",
+    summary="Clear a document's dismissals and stream a fresh engine run",
     response_class=StreamingResponse,
 )
-async def analyze_stream(
-    request: AnalyzeStreamRequest,
+async def recheck_document(
+    doc_id: uuid.UUID,
+    request: RecheckRequest,
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> StreamingResponse:
-    """Validate ownership, then stream the engine run for the document's current text.
+    """Validate ownership, then stream a run that first clears the document's dismissals.
+
+    The dismissal-clearing write and the stream run in the same generator so all session
+    use stays on one thread: ``get_session`` is a sync dependency and the response body is
+    streamed from a threadpool, so mutating the session in the async handler would touch it
+    across threads (the Session is not thread-safe). Mirrors ``/analyze/stream``.
 
     Raises:
         DocumentNotFoundError: if the document is absent or owned by another user.
     """
-    document = session.get(Document, request.document_id)
+    document = session.get(Document, doc_id)
     if document is None or document.owner_id != current_user.id:
-        raise DocumentNotFoundError(request.document_id)
+        raise DocumentNotFoundError(doc_id)
 
     registry = get_run_registry()
-    # Built here (network-free) and injected, so the engine layer stays free of settings;
-    # None when no key is configured, which runs the dictionary-only path. One client drives
-    # both Agent stages — the model is chosen per call.
     client = build_instructor_client(get_settings())
 
     def event_source() -> Iterator[bytes]:
+        deactivate_document_dismissals(session, document.id)
+        session.commit()
         for event in stream_analysis_events(
             session,
             document_id=document.id,
@@ -75,6 +80,7 @@ async def analyze_stream(
             contextual_client=client,
             judge_client=client,
             recommendations_client=client,
+            trigger=AnalysisTrigger.recheck,
         ):
             yield format_sse(event)
 

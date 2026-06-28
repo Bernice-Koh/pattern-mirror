@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { streamAnalysis, StreamError } from './stream-client'
+import { recheckAnalysis, streamAnalysis, StreamError } from './stream-client'
 import type { AnalyzeStreamRequest, StreamEvent } from './stream-contract'
 import type { CitedFlag } from './analyze-contract'
 
@@ -141,5 +141,59 @@ describe('streamAnalysis', () => {
       '/analyze/stream',
       expect.objectContaining({ signal: controller.signal }),
     )
+  })
+})
+
+describe('recheckAnalysis', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('posts the content to the document recheck endpoint and parses events', async () => {
+    const fetchSpy = mockFetch(
+      streamResponse([
+        frame('flag', FLAG),
+        frame('done', {
+          analysis_run_id: 'run-1',
+          status: 'complete',
+          flag_count: 1,
+        }),
+      ]),
+    )
+
+    const events: StreamEvent[] = []
+    for await (const event of recheckAnalysis(
+      'doc-1',
+      'an aggressive leader',
+    )) {
+      events.push(event)
+    }
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/documents/doc-1/recheck',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ content: 'an aggressive leader' }),
+      }),
+    )
+    expect(events).toEqual([
+      { type: 'flag', flag: FLAG },
+      {
+        type: 'done',
+        analysis_run_id: 'run-1',
+        status: 'complete',
+        flag_count: 1,
+      },
+    ])
+  })
+
+  it('throws StreamError carrying the status on a non-OK response', async () => {
+    mockFetch(streamResponse([], false))
+
+    const consume = async (): Promise<void> => {
+      for await (const _event of recheckAnalysis('doc-1', 'text')) void _event
+    }
+
+    await expect(consume()).rejects.toBeInstanceOf(StreamError)
   })
 })
