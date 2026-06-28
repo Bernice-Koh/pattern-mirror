@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { HTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
 
@@ -35,6 +36,8 @@ export function FlagCard({
   className,
   ...props
 }: FlagCardProps) {
+  // The first alternative is pre-selected; the manager can pick another before applying.
+  const [selected, setSelected] = useState<string | undefined>(suggestions[0])
   const isAi = source.toLowerCase().includes('ai')
   const dotColor = dismissed
     ? 'bg-ink-faint'
@@ -77,8 +80,14 @@ export function FlagCard({
             <button
               key={suggestion}
               type="button"
-              onClick={() => onApply?.(suggestion)}
-              className="rounded-pill bg-chip-track px-2.5 py-1 text-micro font-medium text-ink-muted transition-colors hover:bg-red-tint hover:text-red-primary"
+              aria-pressed={suggestion === selected}
+              onClick={() => setSelected(suggestion)}
+              className={cn(
+                'rounded-pill px-2.5 py-1 text-micro font-medium transition-colors',
+                suggestion === selected
+                  ? 'bg-red-tint text-red-primary'
+                  : 'bg-chip-track text-ink-muted hover:bg-red-tint hover:text-red-primary',
+              )}
             >
               {suggestion}
             </button>
@@ -101,15 +110,15 @@ export function FlagCard({
           </button>
         ) : (
           <>
-            <button
-              type="button"
-              onClick={() => {
-                if (suggestions.length > 0) onApply?.(suggestions[0])
-              }}
-              className="rounded-button bg-red-primary px-3.5 py-1.5 text-micro font-semibold text-white transition-colors hover:bg-red-press"
-            >
-              Apply
-            </button>
+            {suggestions.length > 0 && (
+              <button
+                type="button"
+                onClick={() => selected && onApply?.(selected)}
+                className="rounded-button bg-red-primary px-3.5 py-1.5 text-micro font-semibold text-white transition-colors hover:bg-red-press"
+              >
+                Apply
+              </button>
+            )}
             <button
               type="button"
               onClick={onDismiss}

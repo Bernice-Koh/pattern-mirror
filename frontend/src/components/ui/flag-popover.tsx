@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { HTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
 
@@ -27,6 +28,8 @@ export function FlagPopover({
   className,
   ...props
 }: FlagPopoverProps) {
+  // The first alternative is pre-selected; the manager can pick another before applying.
+  const [selected, setSelected] = useState<string | undefined>(suggestions[0])
   const isAi = source.toLowerCase().includes('ai')
   const hasActions = Boolean(onApply || onKeep || onDismiss)
 
@@ -62,8 +65,14 @@ export function FlagPopover({
             <button
               key={suggestion}
               type="button"
-              onClick={() => onApply?.(suggestion)}
-              className="rounded-pill bg-canvas px-3 py-1.5 text-micro font-medium text-ink transition-colors hover:bg-red-tint hover:text-red-primary"
+              aria-pressed={suggestion === selected}
+              onClick={() => setSelected(suggestion)}
+              className={cn(
+                'rounded-pill px-3 py-1.5 text-micro font-medium transition-colors',
+                suggestion === selected
+                  ? 'bg-red-tint text-red-primary'
+                  : 'bg-canvas text-ink hover:bg-red-tint hover:text-red-primary',
+              )}
             >
               {suggestion}
             </button>
@@ -76,7 +85,7 @@ export function FlagPopover({
           {onApply && suggestions.length > 0 && (
             <button
               type="button"
-              onClick={() => onApply(suggestions[0])}
+              onClick={() => selected && onApply(selected)}
               className="rounded-button bg-red-primary px-3.5 py-1.5 text-micro font-semibold text-white transition-colors hover:bg-red-press"
             >
               Apply
