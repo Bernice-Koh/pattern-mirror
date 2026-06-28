@@ -72,7 +72,7 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
     const [text, setText] = useState(initialContent)
     const [hover, setHover] = useState<HoverState | null>(null)
     const flagsById = useRef<Map<string, CitedFlag>>(new Map())
-    const closeTimer = useRef<number | null>(null)
+    const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     const editor = useEditor({
       extensions: [StarterKit, FlagDecorations],
@@ -132,23 +132,20 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
 
     function cancelClose() {
       if (closeTimer.current !== null) {
-        window.clearTimeout(closeTimer.current)
+        clearTimeout(closeTimer.current)
         closeTimer.current = null
       }
     }
 
     function scheduleClose() {
       cancelClose()
-      closeTimer.current = window.setTimeout(
-        () => setHover(null),
-        POPOVER_CLOSE_MS,
-      )
+      closeTimer.current = setTimeout(() => setHover(null), POPOVER_CLOSE_MS)
     }
 
     // Discard a pending close on unmount so a fired timer never sets state late.
     useEffect(
       () => () => {
-        if (closeTimer.current !== null) window.clearTimeout(closeTimer.current)
+        if (closeTimer.current !== null) clearTimeout(closeTimer.current)
       },
       [],
     )
