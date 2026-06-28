@@ -30,6 +30,7 @@ from pattern_mirror.models.engine import Flag, FlagDismissal
 from pattern_mirror.models.enums import (
     AgentName,
     AnalysisRunStatus,
+    AnalysisTrigger,
     BiasCategory,
     DocType,
     FlagScope,
@@ -38,6 +39,7 @@ from pattern_mirror.models.enums import (
 )
 from pattern_mirror.models.identity import User
 from pattern_mirror.services import streaming_analysis
+from pattern_mirror.services.interactions import deactivate_document_dismissals
 from pattern_mirror.services.run_registry import RunRegistry
 from pattern_mirror.services.streaming_analysis import (
     FlagSurfaced,
@@ -192,6 +194,70 @@ def test_a_dismissed_flag_is_persisted_suppressed_with_its_reference_not_surface
     assert persisted.suppressed is True
     assert persisted.suppressed_by_dismissal_id == dismissal.id
     assert persisted.judge_confidence is None
+
+
+def test_recheck_resurfaces_a_previously_dismissed_flag(db_session: Session) -> None:
+    document = _document(db_session)
+    rule = _digital_native_rule(db_session)
+    start = _BIASED_TEXT.index("digital native")
+    db_session.add(
+        FlagDismissal(
+            document_id=document.id,
+            rule_id=rule.id,
+            normalised_span="digital native",
+            sentence_fingerprint=compute_sentence_fingerprint(
+                _BIASED_TEXT, start, start + len("digital native")
+            ),
+        )
+    )
+    db_session.flush()
+
+    deactivate_document_dismissals(db_session, document.id)
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            trigger=AnalysisTrigger.recheck,
+        )
+    )
+
+    surfaced = [event.flag.raw_span for event in events if isinstance(event, FlagSurfaced)]
+    assert surfaced == ["digital native"]
+    run = db_session.scalars(
+        select(AnalysisRun).where(AnalysisRun.document_id == document.id)
+    ).one()
+    assert run.trigger is AnalysisTrigger.recheck
+
+
+def test_recheck_still_respects_the_judge_gate(db_session: Session) -> None:
+    # Clearing dismissals re-surfaces dismissed flags, but the Judge's confidence gate still
+    # applies: a below-threshold contextual flag stays suppressed through a re-check.
+    document = _document(db_session, content=_MIXED_TEXT)
+    judge = _FakeJudgeClient(JudgeResult(verdicts=[JudgeVerdict(confidence=0.4, reasoning="weak")]))
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            contextual_client=_culture_fit_contextual(),
+            judge_client=judge,
+            trigger=AnalysisTrigger.recheck,
+        )
+    )
+
+    surfaced = [event.flag.raw_span for event in events if isinstance(event, FlagSurfaced)]
+    assert surfaced == ["digital native"]
+    persisted = {
+        flag.raw_span: flag
+        for flag in db_session.scalars(select(Flag).where(Flag.document_id == document.id)).all()
+    }
+    assert persisted["culture fit"].suppressed is True
 
 
 def test_a_dismissal_in_a_different_context_does_not_suppress(db_session: Session) -> None:

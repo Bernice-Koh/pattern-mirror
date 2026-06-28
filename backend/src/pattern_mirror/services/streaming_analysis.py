@@ -195,11 +195,12 @@ def stream_analysis_events(
     contextual_client: StructuredCompletionClient | None = None,
     judge_client: StructuredCompletionClient | None = None,
     recommendations_client: StructuredCompletionClient | None = None,
+    trigger: AnalysisTrigger = AnalysisTrigger.typing_pause,
     region_code: str = _REGION_CODE,
 ) -> Iterator[StreamEvent]:
     """Run the engine over a document and yield an event per stage, then a terminal event.
 
-    Persists a fresh ``AnalysisRun`` (trigger ``typing_pause``) and registers it as the
+    Persists a fresh ``AnalysisRun`` and registers it as the
     current run for the document. Verdict-suppressed flags are persisted at the Verdict stage
     and dismissal-suppressed ones at the suppression stage; the rest at the Judge stage
     carrying their confidence and suppression, committed
@@ -221,6 +222,8 @@ def stream_analysis_events(
         judge_client: The Judge client; ``None`` passes every flag through ungated.
         recommendations_client: The Recommendations client; ``None`` surfaces flags with no
             rewrites.
+        trigger: What started this run; ``recheck`` for a manual clean pass, otherwise the
+            default typing pause.
         region_code: The lexicon region; SG for the MVP.
 
     Yields:
@@ -229,7 +232,7 @@ def stream_analysis_events(
     """
     run = AnalysisRun(
         document_id=document_id,
-        trigger=AnalysisTrigger.typing_pause,
+        trigger=trigger,
         content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
         status=AnalysisRunStatus.running,
     )
