@@ -48,7 +48,7 @@ async def _handle_domain_error(request: Request, exc: Exception) -> JSONResponse
     )
 
 
-async def _handle_not_found(request: Request, exc: Exception) -> JSONResponse:
+def _handle_not_found(request: Request, exc: Exception) -> JSONResponse:
     # A more specific handler than _handle_domain_error: a missing/foreign document or flag is
     # a client addressing error (404), not a server fault.
     return JSONResponse(

@@ -40,7 +40,6 @@ class InteractionResponse(BaseModel):
 
 @router.post(
     "/flags/{flag_id}/interactions",
-    response_model=InteractionResponse,
     summary="Record a manager's accept/dismiss/undo on a flag",
 )
 def create_interaction(
