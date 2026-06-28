@@ -27,14 +27,12 @@ const FLAG = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/interaction-client', () => ({
-  recordInteraction: vi
-    .fn()
-    .mockResolvedValue({
-      id: 'i',
-      flag_id: 'f1',
-      kind: 'accept',
-      dismissed: false,
-    }),
+  recordInteraction: vi.fn().mockResolvedValue({
+    id: 'i',
+    flag_id: 'f1',
+    kind: 'accept',
+    dismissed: false,
+  }),
 }))
 
 // Stub the TipTap editor: surface FLAG to the panel and expose a no-op apply handle.
