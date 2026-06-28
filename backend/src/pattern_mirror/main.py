@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from pattern_mirror import __version__
-from pattern_mirror.api import analyze, health, interactions, streaming
+from pattern_mirror.api import analyze, documents, health, interactions, streaming
 from pattern_mirror.core.config import get_settings
 from pattern_mirror.core.errors import (
     DocumentNotFoundError,
@@ -81,4 +81,5 @@ def create_app() -> FastAPI:
     app.include_router(analyze.router)
     app.include_router(streaming.router)
     app.include_router(interactions.router)
+    app.include_router(documents.router)
     return app
