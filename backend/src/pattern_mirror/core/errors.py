@@ -23,6 +23,14 @@ class DocumentNotFoundError(PatternMirrorError):
         self.document_id = document_id
 
 
+class FlagNotFoundError(PatternMirrorError):
+    """A requested flag does not exist or belongs to another user's document."""
+
+    def __init__(self, flag_id: object) -> None:
+        super().__init__(f"Flag not found: {flag_id}")
+        self.flag_id = flag_id
+
+
 class JudgeVerdictCountError(PatternMirrorError):
     """The Judge returned a different number of verdicts than the flags it was asked to score."""
 

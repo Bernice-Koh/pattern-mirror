@@ -1,4 +1,7 @@
-"""The bias engine's output: ``flags`` and the ``flag_dismissals`` that suppress them.
+"""The bias engine's output and the manager's responses to it.
+
+``flags`` and the ``flag_dismissals`` that suppress them, plus ``flag_interactions`` —
+the manager's accept/dismiss/undo events, the raw signal behind the adoption metrics (§13).
 
 Every flag the engine produces is stored, including suppressed ones
 ("log everything, suppress only in UI"). Judge scores are nullable because a
@@ -22,10 +25,12 @@ from pattern_mirror.db.base import Base
 from pattern_mirror.models.columns import uuid_pk
 from pattern_mirror.models.enums import (
     BiasCategory,
+    FlagInteractionKind,
     FlagScope,
     FlagSourceStage,
     FlagVerdict,
     bias_category_enum,
+    flag_interaction_kind_enum,
     flag_scope_enum,
     flag_source_stage_enum,
     flag_verdict_enum,
@@ -86,6 +91,7 @@ class Flag(CreatedAtMixin, Base):
     suppressed_by_dismissal: Mapped["FlagDismissal | None"] = relationship(
         back_populates="suppressed_flags"
     )
+    interactions: Mapped[list["FlagInteraction"]] = relationship(back_populates="flag")
 
 
 class FlagDismissal(CreatedAtMixin, Base):
@@ -111,3 +117,22 @@ class FlagDismissal(CreatedAtMixin, Base):
     document: Mapped["Document"] = relationship(back_populates="dismissals")
     rule: Mapped["Dictionary | None"] = relationship(back_populates="dismissals")
     suppressed_flags: Mapped[list["Flag"]] = relationship(back_populates="suppressed_by_dismissal")
+
+
+class FlagInteraction(CreatedAtMixin, Base):
+    """A manager's response to a surfaced flag: accept, dismiss, or undo.
+
+    Append-only; the five behavioural states (§13) are derived later by the Pattern
+    Aggregator joining these events against the submitted text. "Ignored" is the absence
+    of any row. ``accepted_alternative`` records which recommendation an accept took.
+    """
+
+    __tablename__ = "flag_interactions"
+    __table_args__ = (Index("ix_flag_interactions_flag_id", "flag_id"),)
+
+    id: Mapped[uuid_pk]
+    flag_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("flags.id"))
+    kind: Mapped[FlagInteractionKind] = mapped_column(flag_interaction_kind_enum)
+    accepted_alternative: Mapped[str | None] = mapped_column(Text)
+
+    flag: Mapped["Flag"] = relationship(back_populates="interactions")

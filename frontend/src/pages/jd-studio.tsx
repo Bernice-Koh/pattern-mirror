@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   CATEGORY_LABELS,
   formatCitation,
@@ -11,21 +11,37 @@ import { CategorySummary } from '@/components/ui/category-summary'
 import { Editor } from '@/components/ui/editor'
 import { FlagCard } from '@/components/ui/flag-card'
 import { Legend } from '@/components/ui/legend'
-import { JdEditor } from '@/components/jd-studio/jd-editor'
+import { JdEditor, type JdEditorHandle } from '@/components/jd-studio/jd-editor'
+import { useFlagInteractions } from '@/components/jd-studio/use-flag-interactions'
 
 export function JdStudio() {
   const [title, setTitle] = useState('')
   const [flags, setFlags] = useState<CitedFlag[]>([])
+  const editorRef = useRef<JdEditorHandle>(null)
+  const { resolutions, accept, dismiss, undo } = useFlagInteractions()
+
+  // Apply writes the chosen phrasing into the document, then logs the acceptance; the
+  // text change re-runs analysis, which clears the now-resolved underline.
+  function applyRecommendation(flag: CitedFlag, suggestion: string) {
+    editorRef.current?.applyRecommendation(flag, suggestion)
+    accept(flag.id, suggestion)
+  }
+
+  // Accepted flags drop out of the panel; dismissed ones stay, greyed with Undo.
+  const visibleFlags = useMemo(
+    () => flags.filter((flag) => resolutions.get(flag.id) !== 'accepted'),
+    [flags, resolutions],
+  )
 
   const categoryItems = useMemo(() => {
     const counts = new Map<BiasCategory, number>()
-    for (const flag of flags) {
+    for (const flag of visibleFlags) {
       counts.set(flag.category, (counts.get(flag.category) ?? 0) + 1)
     }
     return [...counts.entries()]
       .map(([category, count]) => ({ label: CATEGORY_LABELS[category], count }))
       .sort((a, b) => b.count - a.count)
-  }, [flags])
+  }, [visibleFlags])
 
   return (
     <main className="flex h-[calc(100vh-7rem)] flex-col bg-surface">
@@ -37,7 +53,14 @@ export function JdStudio() {
             titlePlaceholder="Untitled job description"
             meta="Job description · draft"
           >
-            <JdEditor docType="jd" initialContent="" onFlagsChange={setFlags} />
+            <JdEditor
+              ref={editorRef}
+              docType="jd"
+              initialContent=""
+              onFlagsChange={setFlags}
+              onApplyRecommendation={applyRecommendation}
+              onDismissFlag={(flag) => dismiss(flag.id)}
+            />
           </Editor>
         </div>
 
@@ -48,10 +71,10 @@ export function JdStudio() {
             <h3 className="font-sans text-subheading font-semibold text-ink">
               Bias flags
             </h3>
-            <Badge tone="red">{flags.length}</Badge>
+            <Badge tone="red">{visibleFlags.length}</Badge>
           </div>
           <div className="flex flex-col gap-3">
-            {flags.map((flag) => (
+            {visibleFlags.map((flag) => (
               <FlagCard
                 key={flag.id}
                 category={CATEGORY_LABELS[flag.category]}
@@ -59,6 +82,11 @@ export function JdStudio() {
                 original={flag.raw_span}
                 explanation={flag.explanation}
                 citation={formatCitation(flag.citation)}
+                suggestions={flag.recommendations?.alternatives ?? []}
+                dismissed={resolutions.get(flag.id) === 'dismissed'}
+                onApply={(suggestion) => applyRecommendation(flag, suggestion)}
+                onDismiss={() => dismiss(flag.id)}
+                onUndo={() => undo(flag.id)}
               />
             ))}
           </div>

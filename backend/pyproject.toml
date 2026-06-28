@@ -53,7 +53,10 @@ exclude = ["^src/pattern_mirror/db/migrations/"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# importlib mode lets a source module's mirrored test keep its name in both api/ and
+# services/ (e.g. interactions.py -> tests/api/ and tests/services/), which prepend mode
+# rejects as a duplicate basename. It is also pytest's recommended mode for new suites.
+addopts = "-q --import-mode=importlib"
 markers = [
     "db: test requires a reachable PostgreSQL database (skipped if unavailable)",
 ]

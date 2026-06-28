@@ -86,6 +86,13 @@ class FlagVerdict(StrEnum):
     unacceptable = auto()
 
 
+class FlagInteractionKind(StrEnum):
+    accept = auto()
+    dismiss = auto()
+    # Reverses a prior dismiss; the absence of any interaction is "ignored" (design spec §13).
+    undo = auto()
+
+
 class AgentName(StrEnum):
     contextual_pass = auto()
     judge = auto()
@@ -117,4 +124,5 @@ flag_source_stage_enum = _pg_enum(FlagSourceStage, "flag_source_stage")
 bias_category_enum = _pg_enum(BiasCategory, "bias_category")
 flag_scope_enum = _pg_enum(FlagScope, "flag_scope")
 flag_verdict_enum = _pg_enum(FlagVerdict, "flag_verdict")
+flag_interaction_kind_enum = _pg_enum(FlagInteractionKind, "flag_interaction_kind")
 agent_name_enum = _pg_enum(AgentName, "agent_name")
