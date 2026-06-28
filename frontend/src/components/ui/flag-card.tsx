@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { HTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
+import { SuggestionChip } from '@/components/ui/suggestion-chip'
 
 export interface FlagCardProps extends HTMLAttributes<HTMLDivElement> {
   category?: string
@@ -77,20 +78,13 @@ export function FlagCard({
       {suggestions.length > 0 && !dismissed && (
         <div className="flex flex-wrap gap-1.5">
           {suggestions.map((suggestion) => (
-            <button
+            <SuggestionChip
               key={suggestion}
-              type="button"
-              aria-pressed={suggestion === selected}
+              selected={suggestion === selected}
               onClick={() => setSelected(suggestion)}
-              className={cn(
-                'rounded-pill px-2.5 py-1 text-micro font-medium transition-colors',
-                suggestion === selected
-                  ? 'bg-red-tint text-red-primary'
-                  : 'bg-chip-track text-ink-muted hover:bg-red-tint hover:text-red-primary',
-              )}
             >
               {suggestion}
-            </button>
+            </SuggestionChip>
           ))}
         </div>
       )}
