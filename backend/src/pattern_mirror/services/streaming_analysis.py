@@ -68,6 +68,33 @@ class RunCompleted:
 StreamEvent = StageCompleted | FlagSurfaced | RunCompleted
 
 
+def _persist_verdict_suppressed(
+    session: Session,
+    *,
+    run: AnalysisRun,
+    document_id: uuid.UUID,
+    content: str,
+    suppressed: list[CandidateFlag],
+) -> None:
+    """Persist each flag the Contextual Pass cleared (logged, not surfaced; ADR 0010).
+
+    A keyword hit ruled a false positive or a justified requirement: written with its verdict
+    and ``suppressed=True`` so only clear bias reaches the manager, while the Pattern Aggregator
+    still sees the term fired.
+    """
+    for flag in suppressed:
+        session.add(
+            build_flag(
+                document_id=document_id,
+                analysis_run_id=run.id,
+                candidate=flag,
+                content=content,
+                suppressed=True,
+            )
+        )
+    session.flush()
+
+
 def _persist_dismissal_suppressed(
     session: Session,
     *,
@@ -173,8 +200,9 @@ def stream_analysis_events(
     """Run the engine over a document and yield an event per stage, then a terminal event.
 
     Persists a fresh ``AnalysisRun`` (trigger ``typing_pause``) and registers it as the
-    current run for the document. Dismissal-suppressed flags are persisted at the suppression
-    stage; the rest at the Judge stage carrying their confidence and suppression, committed
+    current run for the document. Verdict-suppressed flags are persisted at the Verdict stage
+    and dismissal-suppressed ones at the suppression stage; the rest at the Judge stage
+    carrying their confidence and suppression, committed
     immediately, but un-suppressed flags surface only at the Recommendations stage, each
     carrying the rewrites generated for it — so the
     client renders a flag together with its alternatives rather than mutating it later. Both
@@ -235,6 +263,14 @@ def stream_analysis_events(
                 # persisted when the Judge stage carries ``judge_scores`` but held back, then
                 # surfaced at the Recommendations stage with the rewrites attached there.
                 data = update or {}
+                if "verdict_suppressed_flags" in data:
+                    _persist_verdict_suppressed(
+                        session,
+                        run=run,
+                        document_id=document_id,
+                        content=content,
+                        suppressed=data["verdict_suppressed_flags"],
+                    )
                 if "dismissal_suppressed_flags" in data:
                     _persist_dismissal_suppressed(
                         session,

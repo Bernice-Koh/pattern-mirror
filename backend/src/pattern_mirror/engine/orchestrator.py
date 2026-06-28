@@ -1,10 +1,12 @@
-"""The five-stage engine wired as a LangGraph StateGraph over ``EngineState``.
+"""The engine wired as a LangGraph StateGraph over ``EngineState``.
 
-The linear pipeline Dictionary -> Contextual -> Adjudicator -> Judge -> Recommendations:
-the deterministic Modules and the injected Contextual Pass + Judge Agents are real nodes;
-Recommendations is stubbed with a passthrough until its stage lands. Each node returns a
+The linear pipeline is Dictionary -> Contextual -> Adjudicator -> Verdict -> Suppression ->
+Judge -> Recommendations. The deterministic Modules (Dictionary, Adjudicator, Verdict,
+Suppression) and the injected Agents (Contextual Pass, Judge, Recommendations) are real
+nodes; an absent Agent client degrades its stage to a passthrough. Each node returns a
 partial ``StateUpdate`` the graph merges by channel and logs; the Adjudicator drops
-unverifiable flags and records why.
+unverifiable flags, the Verdict node suppresses flags the Contextual Pass cleared, and the
+Suppression Module drops flags an active dismissal already covers.
 """
 
 from collections.abc import Callable
@@ -21,6 +23,7 @@ from pattern_mirror.engine.citations import load_citation_evidence
 from pattern_mirror.engine.contextual_pass import (
     run_contextual_pass,
     to_candidate_flags,
+    to_dictionary_verdicts,
 )
 from pattern_mirror.engine.dictionary import (
     load_active_rules,
@@ -39,6 +42,7 @@ from pattern_mirror.engine.suppression import (
     load_active_dismissals,
     partition_by_dismissal,
 )
+from pattern_mirror.engine.verdict import apply_verdicts
 from pattern_mirror.models.enums import AgentName, FlagSourceStage
 from pattern_mirror.services.agent_runs import record_agent_run
 
@@ -67,6 +71,31 @@ def _adjudicator_node(state: EngineState) -> StateUpdate:
         )
     update: StateUpdate = {"verified_flags": result.verified}
     log_transition("adjudicator", state["document_id"], update)
+    return update
+
+
+def _verdict_node(state: EngineState) -> StateUpdate:
+    """Apply the Contextual Pass's GDOR verdicts; suppress all but the unacceptable flags.
+
+    Runs after the Adjudicator, so every span has resolved offsets to match a verdict against,
+    and before the Judge, so cleared flags spend no scoring tokens. Survivors stay on
+    ``verified_flags``; the suppressed flags route to their own channel to be persisted but not
+    surfaced (design spec §12, ADR 0010).
+    """
+    survivors, suppressed = apply_verdicts(state["verified_flags"], state["dictionary_verdicts"])
+    for flag in suppressed:
+        _log.info(
+            "engine.flag_verdict_suppressed",
+            document_id=str(state["document_id"]),
+            raw_span=flag.raw_span,
+            source_stage=flag.source_stage,
+            verdict=flag.verdict,
+        )
+    update: StateUpdate = {
+        "verified_flags": survivors,
+        "verdict_suppressed_flags": suppressed,
+    }
+    log_transition("verdict", state["document_id"], update)
     return update
 
 
@@ -112,16 +141,23 @@ def _build_contextual_node(
 ) -> EngineNode:
     """Build the real Contextual Pass node: a Sonnet 4.6 Agent logged to ``agent_runs``.
 
-    The node calls the Agent, records the run (input/output/cost/latency), and appends the
-    proposed flags to the candidate channel with contextual provenance. Spans are offset-less
-    here; the Adjudicator resolves and verifies them downstream.
+    The node hands the Agent the dictionary flags raised so far, records the run
+    (input/output/cost/latency), appends the Agent's new flags to the candidate channel with
+    contextual provenance, and emits its rulings on the dictionary flags for the Verdict node.
+    New spans are offset-less here; the Adjudicator resolves and verifies them downstream.
     """
 
     def node(state: EngineState) -> StateUpdate:
+        dictionary_flags = [
+            flag
+            for flag in state["candidate_flags"]
+            if flag.source_stage is FlagSourceStage.dictionary
+        ]
         run = run_contextual_pass(
             client,
             document_text=state["document_text"],
             doc_type=state["doc_type"],
+            dictionary_flags=dictionary_flags,
             model=model,
         )
         record_agent_run(
@@ -139,7 +175,7 @@ def _build_contextual_node(
         )
         category_citations = load_category_citations(session, state["region_code"])
         candidates = to_candidate_flags(run.result, category_citations)
-        dropped = len(run.result.flags) - len(candidates)
+        dropped = len(run.result.new_flags) - len(candidates)
         if dropped:
             # ADR 0006: a flag with no citation floor for its category is suppressed.
             _log.info(
@@ -147,7 +183,10 @@ def _build_contextual_node(
                 document_id=str(state["document_id"]),
                 dropped=dropped,
             )
-        update: StateUpdate = {"candidate_flags": candidates}
+        update: StateUpdate = {
+            "candidate_flags": candidates,
+            "dictionary_verdicts": to_dictionary_verdicts(dictionary_flags, run.result),
+        }
         log_transition("contextual", state["document_id"], update)
         return update
 
@@ -307,6 +346,7 @@ def build_engine_graph(
         ("dictionary", dictionary_node),
         ("contextual", contextual_node),
         ("adjudicator", _adjudicator_node),
+        ("verdict", _verdict_node),
         ("suppression", suppression_node),
         ("judge", judge_node),
         ("recommendations", recommendations_node),
@@ -317,7 +357,8 @@ def build_engine_graph(
     graph.add_edge(START, "dictionary")
     graph.add_edge("dictionary", "contextual")
     graph.add_edge("contextual", "adjudicator")
-    graph.add_edge("adjudicator", "suppression")
+    graph.add_edge("adjudicator", "verdict")
+    graph.add_edge("verdict", "suppression")
     graph.add_edge("suppression", "judge")
     graph.add_edge("judge", "recommendations")
     graph.add_edge("recommendations", END)

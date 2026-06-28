@@ -15,7 +15,11 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
+from pattern_mirror.engine.contextual_pass import (
+    ContextualFlag,
+    ContextualPassResult,
+    DictionaryFlagReview,
+)
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
 from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
@@ -30,6 +34,7 @@ from pattern_mirror.models.enums import (
     DocType,
     FlagScope,
     FlagSourceStage,
+    FlagVerdict,
 )
 from pattern_mirror.models.identity import User
 from pattern_mirror.services import streaming_analysis
@@ -87,11 +92,12 @@ _MIXED_TEXT = "We want a digital native who is a strong culture fit."
 def _culture_fit_contextual() -> _FakeContextualClient:
     return _FakeContextualClient(
         ContextualPassResult(
-            flags=[
+            new_flags=[
                 ContextualFlag(
                     raw_span="culture fit",
                     category=BiasCategory.race,
                     scope=FlagScope.role_specific,
+                    verdict=FlagVerdict.unacceptable,
                     explanation="Vague 'fit' invites in-group bias.",
                 )
             ]
@@ -312,11 +318,12 @@ def test_contextual_flags_are_verified_persisted_and_logged(db_session: Session)
     document = _document(db_session, content="We value a strong culture fit.")
     fake = _FakeContextualClient(
         ContextualPassResult(
-            flags=[
+            new_flags=[
                 ContextualFlag(
                     raw_span="culture fit",
                     category=BiasCategory.race,
                     scope=FlagScope.role_specific,
+                    verdict=FlagVerdict.unacceptable,
                     explanation="Vague 'fit' invites in-group bias.",
                 )
             ]
@@ -352,6 +359,118 @@ def test_contextual_flags_are_verified_persisted_and_logged(db_session: Session)
     assert agent_run.agent_name is AgentName.contextual_pass
     assert agent_run.prompt_tokens == 90
     assert agent_run.analysis_run_id is not None
+
+
+def test_a_keyword_flag_ruled_acceptable_is_persisted_suppressed_not_surfaced(
+    db_session: Session,
+) -> None:
+    document = _document(db_session)  # _BIASED_TEXT -> the dictionary flags "digital native"
+    contextual = _FakeContextualClient(
+        ContextualPassResult(
+            dictionary_reviews=[
+                DictionaryFlagReview(
+                    flag_id=0,
+                    verdict=FlagVerdict.acceptable,
+                    reasoning="Refers to the product segment, not the candidate.",
+                )
+            ]
+        )
+    )
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            contextual_client=contextual,
+        )
+    )
+
+    # Suppress in UI: the false positive the Contextual Pass cleared reaches no one.
+    assert not any(isinstance(event, FlagSurfaced) for event in events)
+    # Log everything: it is persisted with its verdict, reasoning, and no dismissal reference.
+    persisted = db_session.scalars(select(Flag).where(Flag.document_id == document.id)).one()
+    assert persisted.raw_span == "digital native"
+    assert persisted.suppressed is True
+    assert persisted.verdict is FlagVerdict.acceptable
+    assert persisted.rationale["explanation"] == "Refers to the product segment, not the candidate."
+    assert persisted.suppressed_by_dismissal_id is None
+
+
+def test_a_keyword_flag_ruled_justified_is_persisted_suppressed(db_session: Session) -> None:
+    document = _document(db_session)
+    contextual = _FakeContextualClient(
+        ContextualPassResult(
+            dictionary_reviews=[
+                DictionaryFlagReview(
+                    flag_id=0,
+                    verdict=FlagVerdict.acceptable_with_justification,
+                    reasoning="Genuine requirement, stated objectively.",
+                )
+            ]
+        )
+    )
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            contextual_client=contextual,
+        )
+    )
+
+    assert not any(isinstance(event, FlagSurfaced) for event in events)
+    persisted = db_session.scalars(select(Flag).where(Flag.document_id == document.id)).one()
+    assert persisted.suppressed is True
+    assert persisted.verdict is FlagVerdict.acceptable_with_justification
+
+
+def test_keyword_unacceptable_and_a_new_flag_each_surface_once(db_session: Session) -> None:
+    document = _document(db_session, content=_MIXED_TEXT)
+    contextual = _FakeContextualClient(
+        ContextualPassResult(
+            dictionary_reviews=[
+                DictionaryFlagReview(
+                    flag_id=0, verdict=FlagVerdict.unacceptable, reasoning="Age proxy."
+                )
+            ],
+            new_flags=[
+                ContextualFlag(
+                    raw_span="culture fit",
+                    category=BiasCategory.race,
+                    scope=FlagScope.role_specific,
+                    verdict=FlagVerdict.unacceptable,
+                    explanation="Vague 'fit' invites in-group bias.",
+                )
+            ],
+        )
+    )
+
+    events = list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            contextual_client=contextual,
+        )
+    )
+
+    surfaced = sorted(event.flag.raw_span for event in events if isinstance(event, FlagSurfaced))
+    assert surfaced == ["culture fit", "digital native"]
+    # Prevent-at-source: the keyword span surfaces once, not duplicated by the LLM layer.
+    digital = db_session.scalars(
+        select(Flag).where(Flag.document_id == document.id, Flag.raw_span == "digital native")
+    ).all()
+    assert len(digital) == 1
+    assert digital[0].verdict is FlagVerdict.unacceptable
+    assert digital[0].suppressed is False
 
 
 def test_below_threshold_contextual_flag_is_persisted_suppressed_not_surfaced(

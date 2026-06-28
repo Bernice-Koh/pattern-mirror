@@ -10,7 +10,7 @@ is the durable record for flags from every stage, so this shape persists without
 import uuid
 from dataclasses import dataclass
 
-from pattern_mirror.models.enums import BiasCategory, FlagScope, FlagSourceStage
+from pattern_mirror.models.enums import BiasCategory, FlagScope, FlagSourceStage, FlagVerdict
 
 
 @dataclass(frozen=True)
@@ -24,7 +24,8 @@ class CandidateFlag:
 
     ``scope`` distinguishes *general* (dictionary-eligible) from *role-specific* (LLM-only)
     candidates — the trigger input for the Dictionary Growth loop (design spec §3). The
-    dictionary stage produces only general flags, so it is the default.
+    dictionary stage produces only general flags, so it is the default. ``verdict`` is the
+    Contextual Pass's GDOR ruling; ``None`` until that stage rules on the flag.
     """
 
     source_stage: FlagSourceStage
@@ -37,3 +38,4 @@ class CandidateFlag:
     dictionary_entry_id: uuid.UUID | None = None
     explanation: str | None = None
     lemma_key: str | None = None
+    verdict: FlagVerdict | None = None

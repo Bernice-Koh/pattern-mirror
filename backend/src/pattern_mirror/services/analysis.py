@@ -80,6 +80,7 @@ def build_flag(
         citation_id=candidate.citation_id,
         category=candidate.category,
         scope=candidate.scope,
+        verdict=candidate.verdict,
         raw_span=candidate.raw_span,
         normalised_span=normalised_span_of(candidate),
         sentence_fingerprint=compute_sentence_fingerprint(
