@@ -1,28 +1,38 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CitedFlag } from '@/lib/analyze-contract'
-import { streamAnalysis } from '@/lib/stream-client'
+import { recheckAnalysis, streamAnalysis } from '@/lib/stream-client'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 
 const STREAM_IDLE_MS = 3000
 
-/** Layer 2 of JD Studio's two-trigger model: after the manager pauses for
- *  STREAM_IDLE_MS, open the SSE pipeline for the latest document and accumulate the
- *  contextual flags it streams in. Resuming typing aborts the in-flight run; the next
- *  pause starts a fresh one, replacing the prior run's flags. Dictionary flags from the
- *  stream are ignored — Layer 1's `/analyze` path already renders those.
+/** Layer 2 of JD Studio's two-trigger model, plus the manual re-check (design spec §3, §12).
  *
- *  The accumulating SSE subscription lives here, in a hook, rather than on TanStack
- *  Query, which models request/response server state (CODE_STYLE: state management).
+ *  After the manager pauses for STREAM_IDLE_MS the contextual pipeline streams in via SSE;
+ *  `recheck` runs the same pipeline on demand, first clearing the document's dismissals so
+ *  previously-dismissed contextual flags re-surface. Both feed one accumulator, so a re-check
+ *  result behaves like any other contextual pass — applying or dismissing one flag leaves the
+ *  rest in place, and the next typing pause replaces the set. Dictionary flags are ignored
+ *  here; Layer 1's `/analyze` path renders those.
  *
- *  @param documentId The document to stream, from the latest Layer-1 response; null
- *    until the first dictionary pass returns, which suspends Layer 2.
- *  @param text The editor's current text; its idle pause triggers the run.
+ *  The accumulating SSE subscription lives in a hook, not on TanStack Query, which models
+ *  request/response server state (CODE_STYLE: state management).
+ *
+ *  @param documentId The document to stream, from the latest Layer-1 response; null until the
+ *    first dictionary pass returns, which suspends Layer 2 and disables re-check.
+ *  @param text The editor's current text; its idle pause triggers the automatic run, and its
+ *    current value is what a re-check analyses.
+ *  @returns The accumulated contextual flags, a `recheck` trigger, and `isRechecking`.
  */
 export function useFlagStream(
   documentId: string | null,
   text: string,
-): CitedFlag[] {
+): {
+  contextualFlags: CitedFlag[]
+  recheck: () => void
+  isRechecking: boolean
+} {
   const [contextualFlags, setContextualFlags] = useState<CitedFlag[]>([])
+  const [isRechecking, setIsRechecking] = useState(false)
   const debouncedText = useDebouncedValue(text, STREAM_IDLE_MS)
   const controllerRef = useRef<AbortController | null>(null)
 
@@ -66,5 +76,37 @@ export function useFlagStream(
     }
   }, [text, debouncedText])
 
-  return contextualFlags
+  const recheck = useCallback(() => {
+    if (!documentId) return
+    const docId = documentId
+    controllerRef.current?.abort()
+    const controller = new AbortController()
+    controllerRef.current = controller
+
+    async function consume(): Promise<void> {
+      setContextualFlags([])
+      setIsRechecking(true)
+      try {
+        for await (const event of recheckAnalysis(
+          docId,
+          text,
+          controller.signal,
+        )) {
+          if (
+            event.type === 'flag' &&
+            event.flag.source_stage === 'contextual'
+          ) {
+            setContextualFlags((prev) => [...prev, event.flag])
+          }
+        }
+      } catch {
+        // Aborted or failed: keep whatever surfaced; the next pass replaces it.
+      } finally {
+        if (controllerRef.current === controller) setIsRechecking(false)
+      }
+    }
+    void consume()
+  }, [documentId, text])
+
+  return { contextualFlags, recheck, isRechecking }
 }
