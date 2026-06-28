@@ -23,6 +23,7 @@ import {
 } from '@/lib/analyze-contract'
 import { analyzeDocument } from '@/lib/analyze-client'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
+import { Button } from '@/components/ui/button'
 import { FlagPopover } from '@/components/ui/flag-popover'
 import {
   applyFlags,
@@ -31,6 +32,26 @@ import {
 import { useFlagStream } from '@/components/jd-studio/use-flag-stream'
 
 const ANALYZE_DEBOUNCE_MS = 400
+
+/** Circular arrow marking the re-check action — a fresh pass after a major rewrite. */
+function RecheckIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  )
+}
 
 interface HoverState {
   flag: CitedFlag
@@ -46,6 +67,10 @@ export interface JdEditorProps {
   onApplyRecommendation?: (flag: CitedFlag, suggestion: string) => void
   /** Dismiss a flag from the hover popover. */
   onDismissFlag?: (flag: CitedFlag) => void
+  /** Flag ids the manager has dismissed; their underline and hover popover clear at once
+   *  (the span is unchanged, so re-analysis alone would re-surface them). Accepted flags are
+   *  not listed here — applying rewrites the text, so re-analysis clears those. */
+  dismissedFlagIds?: ReadonlySet<string>
 }
 
 const POPOVER_CLOSE_MS = 100
@@ -66,6 +91,7 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
       onFlagsChange,
       onApplyRecommendation,
       onDismissFlag,
+      dismissedFlagIds,
     },
     ref,
   ) {
@@ -94,20 +120,34 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
       placeholderData: keepPreviousData,
     })
 
-    // Layer 2 streams its contextual flags off the document Layer 1 just persisted.
-    const contextualFlags = useFlagStream(data?.document_id ?? null, text)
+    // Layer 2 streams its contextual flags off the document Layer 1 just persisted; a
+    // re-check re-runs that same stream on demand into the same accumulator.
+    const { contextualFlags, recheck, isRechecking } = useFlagStream(
+      data?.document_id ?? null,
+      text,
+    )
 
     const flags = useMemo(
       () => [...(data?.flags ?? []), ...contextualFlags],
       [data, contextualFlags],
     )
 
+    // Dismissed flags stay in `flags` (the panel still lists them, greyed) but drop out of
+    // the editor's underlines and hover map at once, since their span is unchanged.
+    const decoratedFlags = useMemo(
+      () => flags.filter((flag) => !dismissedFlagIds?.has(flag.id)),
+      [flags, dismissedFlagIds],
+    )
+
     useEffect(() => {
       if (!editor) return
-      flagsById.current = new Map(flags.map((flag) => [flag.id, flag]))
-      applyFlags(editor.view, flags)
+      flagsById.current = new Map(decoratedFlags.map((flag) => [flag.id, flag]))
+      applyFlags(editor.view, decoratedFlags)
+    }, [editor, decoratedFlags])
+
+    useEffect(() => {
       onFlagsChange?.(flags)
-    }, [editor, flags, onFlagsChange])
+    }, [flags, onFlagsChange])
 
     useImperativeHandle(
       ref,
@@ -182,6 +222,17 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
         onMouseLeave={scheduleClose}
         onBlur={scheduleClose}
       >
+        <div className="mb-2 flex justify-end">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={recheck}
+            disabled={!data?.document_id || isRechecking}
+          >
+            <RecheckIcon />
+            {isRechecking ? 'Re-checking…' : 'Re-check'}
+          </Button>
+        </div>
         <EditorContent editor={editor} />
         {hover && (
           <FlagPopover

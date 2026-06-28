@@ -33,6 +33,18 @@ export function JdStudio() {
     [flags, resolutions],
   )
 
+  // Dismissed flags lose their inline underline at once (their span is unchanged); accepted
+  // ones clear via the re-analysis their text edit triggers, so only dismissals go here.
+  const dismissedFlagIds = useMemo(
+    () =>
+      new Set(
+        [...resolutions.entries()]
+          .filter(([, resolution]) => resolution === 'dismissed')
+          .map(([id]) => id),
+      ),
+    [resolutions],
+  )
+
   const categoryItems = useMemo(() => {
     const counts = new Map<BiasCategory, number>()
     for (const flag of visibleFlags) {
@@ -60,6 +72,7 @@ export function JdStudio() {
               onFlagsChange={setFlags}
               onApplyRecommendation={applyRecommendation}
               onDismissFlag={(flag) => dismiss(flag.id)}
+              dismissedFlagIds={dismissedFlagIds}
             />
           </Editor>
         </div>

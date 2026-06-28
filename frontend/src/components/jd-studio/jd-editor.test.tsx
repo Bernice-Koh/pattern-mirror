@@ -5,6 +5,8 @@ import { render, screen, fireEvent, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { CitedFlag } from '@/lib/analyze-contract'
 import { JdEditor, type JdEditorHandle } from './jd-editor'
+import { useFlagStream } from './use-flag-stream'
+import { applyFlags } from './flag-decorations'
 
 const FLAG: CitedFlag = {
   id: 'f1',
@@ -62,7 +64,7 @@ vi.mock('@/components/jd-studio/flag-decorations', () => ({
 }))
 vi.mock('@/lib/analyze-client', () => ({ analyzeDocument: vi.fn() }))
 vi.mock('@/components/jd-studio/use-flag-stream', () => ({
-  useFlagStream: () => [FLAG],
+  useFlagStream: vi.fn(),
 }))
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -74,6 +76,12 @@ describe('JdEditor', () => {
   beforeEach(() => {
     insertContentAt.mockClear()
     run.mockClear()
+    vi.mocked(applyFlags).mockClear()
+    vi.mocked(useFlagStream).mockReturnValue({
+      contextualFlags: [FLAG],
+      recheck: vi.fn(),
+      isRechecking: false,
+    })
   })
 
   it('applyRecommendation replaces the flagged span with the chosen phrasing', () => {
@@ -132,6 +140,53 @@ describe('JdEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss flag' }))
 
     expect(onDismissFlag).toHaveBeenCalledWith(FLAG)
+  })
+
+  it('clears a dismissed flag from the inline decorations', () => {
+    render(
+      <JdEditor
+        docType="jd"
+        initialContent=""
+        dismissedFlagIds={new Set(['f1'])}
+      />,
+      { wrapper },
+    )
+
+    // FLAG is the only flag and is dismissed, so the editor decorates nothing.
+    const lastCall = vi.mocked(applyFlags).mock.calls.at(-1)?.[1] as CitedFlag[]
+    expect(lastCall).toEqual([])
+  })
+
+  it('does not open a popover for a dismissed flag on hover', () => {
+    render(
+      <JdEditor
+        docType="jd"
+        initialContent=""
+        dismissedFlagIds={new Set(['f1'])}
+      />,
+      { wrapper },
+    )
+
+    fireEvent.mouseOver(screen.getByText('young rockstar'))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('disables the Re-check button until a document exists', () => {
+    render(<JdEditor docType="jd" initialContent="" />, { wrapper })
+
+    expect(screen.getByRole('button', { name: /re-check/i })).toBeDisabled()
+  })
+
+  it('shows a re-check in progress on the button', () => {
+    vi.mocked(useFlagStream).mockReturnValue({
+      contextualFlags: [FLAG],
+      recheck: vi.fn(),
+      isRechecking: true,
+    })
+    render(<JdEditor docType="jd" initialContent="" />, { wrapper })
+
+    expect(screen.getByRole('button', { name: /re-checking/i })).toBeDisabled()
   })
 
   it('schedules a close when the pointer leaves the flag, and reopens on re-hover', () => {
