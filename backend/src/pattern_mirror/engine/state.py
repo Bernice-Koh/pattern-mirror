@@ -57,6 +57,19 @@ class FlagRecommendation:
 
 
 @dataclass(frozen=True)
+class SuppressedFlag:
+    """A verified flag an active dismissal suppresses, with the dismissal that did it.
+
+    Produced by the suppression Module between the Adjudicator and the Judge: the flag is
+    logged with ``suppressed=true`` and this reference, but is not scored, rewritten, or
+    surfaced (design spec §12).
+    """
+
+    flag: CandidateFlag
+    dismissal_id: uuid.UUID
+
+
+@dataclass(frozen=True)
 class DriftReference:
     """The swapped reference corpus a drift run compares the document against.
 
@@ -73,8 +86,10 @@ class EngineState(TypedDict):
     Channels differ in how updates merge. ``candidate_flags`` *accumulates*: the
     dictionary and contextual stages each append, via ``accumulate_candidate_flags``.
     Every other channel *overwrites* (LangGraph's default last-value-wins): the Adjudicator
-    replaces ``verified_flags`` with its survivors, the Judge replaces ``judge_scores``, and
-    Recommendations replaces ``recommendations`` wholesale. The identity and inputs
+    replaces ``verified_flags`` with its survivors, the suppression Module overwrites it again
+    with the un-dismissed subset and fills ``dismissal_suppressed_flags``, the Judge replaces
+    ``judge_scores``, and Recommendations replaces ``recommendations`` wholesale. The identity
+    and inputs
     (``analysis_run_id``, ``document_id``, ``document_text``, ``doc_type``, ``region_code``)
     are set at init and not changed.
     """
@@ -86,6 +101,7 @@ class EngineState(TypedDict):
     region_code: str
     candidate_flags: Annotated[list[CandidateFlag], accumulate_candidate_flags]
     verified_flags: list[CandidateFlag]
+    dismissal_suppressed_flags: list[SuppressedFlag]
     judge_scores: list[JudgeScore]
     recommendations: list[FlagRecommendation]
     drift_reference: DriftReference | None
@@ -100,6 +116,7 @@ class StateUpdate(TypedDict, total=False):
 
     candidate_flags: list[CandidateFlag]
     verified_flags: list[CandidateFlag]
+    dismissal_suppressed_flags: list[SuppressedFlag]
     judge_scores: list[JudgeScore]
     recommendations: list[FlagRecommendation]
     drift_reference: DriftReference | None
@@ -123,6 +140,7 @@ def initial_state(
         region_code=region_code,
         candidate_flags=[],
         verified_flags=[],
+        dismissal_suppressed_flags=[],
         judge_scores=[],
         recommendations=[],
         drift_reference=drift_reference,

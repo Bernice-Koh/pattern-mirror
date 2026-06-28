@@ -34,6 +34,11 @@ from pattern_mirror.engine.recommendations import (
     to_flag_recommendations,
 )
 from pattern_mirror.engine.state import EngineState, JudgeScore, StateUpdate, log_transition
+from pattern_mirror.engine.suppression import (
+    DismissalIndex,
+    load_active_dismissals,
+    partition_by_dismissal,
+)
 from pattern_mirror.models.enums import AgentName, FlagSourceStage
 from pattern_mirror.services.agent_runs import record_agent_run
 
@@ -63,6 +68,32 @@ def _adjudicator_node(state: EngineState) -> StateUpdate:
     update: StateUpdate = {"verified_flags": result.verified}
     log_transition("adjudicator", state["document_id"], update)
     return update
+
+
+def _build_suppression_node(session: Session) -> EngineNode:
+    """Build the suppression Module: drop dismissal-matched flags before the LLM stages.
+
+    Runs after the Adjudicator, so every flag has resolved offsets, and before the Judge, so
+    the Judge and Recommendations spend no tokens on a flag the manager already dismissed
+    (design spec §12). Overwrites ``verified_flags`` with the survivors and routes the
+    suppressed flags onto their own channel, to be persisted but not surfaced.
+    """
+
+    def node(state: EngineState) -> StateUpdate:
+        index = DismissalIndex.from_dismissals(
+            load_active_dismissals(session, state["document_id"])
+        )
+        survivors, suppressed = partition_by_dismissal(
+            state["verified_flags"], content=state["document_text"], index=index
+        )
+        update: StateUpdate = {
+            "verified_flags": survivors,
+            "dismissal_suppressed_flags": suppressed,
+        }
+        log_transition("suppression", state["document_id"], update)
+        return update
+
+    return node
 
 
 def _passthrough_node(stage: str) -> EngineNode:
@@ -261,20 +292,22 @@ def build_engine_graph(
     *,
     dictionary_node: EngineNode,
     contextual_node: EngineNode,
+    suppression_node: EngineNode,
     judge_node: EngineNode,
     recommendations_node: EngineNode,
 ) -> CompiledStateGraph[EngineState]:
-    """Compile the five-stage graph from injected nodes; the Adjudicator is fixed.
+    """Compile the engine graph from injected nodes; the Adjudicator is fixed.
 
     Every node is injectable except the Adjudicator, which is deterministic and owns the
     verbatim gate, so it is wired in directly. Tests pass fakes; production passes the real
-    dictionary node and the stubbed LLM stages via ``build_default_graph``.
+    dictionary and suppression nodes and the LLM stages via ``build_default_graph``.
     """
     graph: StateGraph[EngineState] = StateGraph(EngineState)
     nodes: list[tuple[str, EngineNode]] = [
         ("dictionary", dictionary_node),
         ("contextual", contextual_node),
         ("adjudicator", _adjudicator_node),
+        ("suppression", suppression_node),
         ("judge", judge_node),
         ("recommendations", recommendations_node),
     ]
@@ -284,7 +317,8 @@ def build_engine_graph(
     graph.add_edge(START, "dictionary")
     graph.add_edge("dictionary", "contextual")
     graph.add_edge("contextual", "adjudicator")
-    graph.add_edge("adjudicator", "judge")
+    graph.add_edge("adjudicator", "suppression")
+    graph.add_edge("suppression", "judge")
     graph.add_edge("judge", "recommendations")
     graph.add_edge("recommendations", END)
     return graph.compile()
@@ -318,6 +352,8 @@ def build_default_graph(
     else:
         contextual_node = _passthrough_node("contextual")
 
+    suppression_node = _build_suppression_node(session)
+
     judge_node = _build_judge_node(session, judge_client, settings.judge_model, settings)
 
     if recommendations_client is not None:
@@ -330,6 +366,7 @@ def build_default_graph(
     return build_engine_graph(
         dictionary_node=dictionary_node,
         contextual_node=contextual_node,
+        suppression_node=suppression_node,
         judge_node=judge_node,
         recommendations_node=recommendations_node,
     )

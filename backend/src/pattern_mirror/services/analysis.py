@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.dictionary import load_active_rules, match_dictionary
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
-from pattern_mirror.engine.lemmatiser import lemma_key
+from pattern_mirror.engine.suppression import normalised_span_of
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
 from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
@@ -46,6 +46,7 @@ def build_flag(
     content: str,
     judge_confidence: float | None = None,
     suppressed: bool = False,
+    suppressed_by_dismissal_id: uuid.UUID | None = None,
 ) -> Flag:
     """Build a persistable ``Flag`` row from a candidate, with its full provenance.
 
@@ -62,15 +63,15 @@ def build_flag(
             from ``raw_span``.
         content: The exact document text the offsets index into.
         judge_confidence: The Judge's raw confidence, or None for a flag it did not score.
-        suppressed: True when the Judge's gate dropped the flag (logged, not surfaced).
+        suppressed: True when a gate (Judge confidence or a dismissal) dropped the flag from
+            the UI; it is still persisted (logged, not surfaced).
+        suppressed_by_dismissal_id: The dismissal that suppressed this flag, when a dismissal
+            did; None when the flag surfaced or the Judge suppressed it.
 
     Returns:
         An unpersisted ``Flag`` carrying the candidate's span, provenance, and fingerprint.
     """
     assert candidate.start_offset is not None and candidate.end_offset is not None
-    normalised_span = (
-        candidate.lemma_key if candidate.lemma_key is not None else lemma_key(candidate.raw_span)
-    )
     return Flag(
         document_id=document_id,
         analysis_run_id=analysis_run_id,
@@ -80,7 +81,7 @@ def build_flag(
         category=candidate.category,
         scope=candidate.scope,
         raw_span=candidate.raw_span,
-        normalised_span=normalised_span,
+        normalised_span=normalised_span_of(candidate),
         sentence_fingerprint=compute_sentence_fingerprint(
             content, candidate.start_offset, candidate.end_offset
         ),
@@ -89,6 +90,7 @@ def build_flag(
         rationale={"explanation": candidate.explanation},
         judge_confidence=Decimal(str(judge_confidence)) if judge_confidence is not None else None,
         suppressed=suppressed,
+        suppressed_by_dismissal_id=suppressed_by_dismissal_id,
     )
 
 
