@@ -10,9 +10,10 @@ manager actually saw.
 
 import uuid
 from dataclasses import dataclass
+from typing import Any, cast
 
 import structlog
-from sqlalchemy import ColumnElement, select
+from sqlalchemy import ColumnElement, CursorResult, select, update
 from sqlalchemy.orm import Session
 
 from pattern_mirror.core.errors import FlagNotFoundError
@@ -115,3 +116,30 @@ def record_interaction(
         dismissal_id=str(dismissal.id) if dismissal else None,
     )
     return InteractionResult(interaction=interaction, dismissal=dismissal)
+
+
+def deactivate_document_dismissals(session: Session, document_id: uuid.UUID) -> int:
+    """Deactivate every active dismissal for a document so a re-check re-surfaces all flags.
+
+    The first step of a manual re-check (design spec §12): with no active dismissal left, the
+    suppression Module surfaces every flag the engine produces, including ones a prior run
+    suppressed. ``synchronize_session=False`` because the next run re-queries dismissals from
+    the database rather than reading session-loaded instances.
+
+    Args:
+        session: The active session (committed by the caller).
+        document_id: The document whose dismissals are cleared.
+
+    Returns:
+        The number of dismissals deactivated.
+    """
+    result = session.execute(
+        update(FlagDismissal)
+        .where(FlagDismissal.document_id == document_id, FlagDismissal.active.is_(True))
+        .values(active=False),
+        execution_options={"synchronize_session": False},
+    )
+    # Core DML returns a CursorResult at runtime, but the typed stub widens it to Result.
+    count = cast("CursorResult[Any]", result).rowcount
+    _log.info("document.dismissals_deactivated", document_id=str(document_id), count=count)
+    return count
