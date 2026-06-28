@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from pattern_mirror.api.deps import get_current_user
-from pattern_mirror.api.schemas import serialise_flag
+from pattern_mirror.api.sse import format_sse
 from pattern_mirror.core.config import get_settings
 from pattern_mirror.core.errors import DocumentNotFoundError
 from pattern_mirror.db.session import get_session
@@ -28,13 +28,7 @@ from pattern_mirror.engine.llm_agent import build_instructor_client
 from pattern_mirror.models.documents import Document
 from pattern_mirror.models.identity import User
 from pattern_mirror.services.run_registry import get_run_registry
-from pattern_mirror.services.streaming_analysis import (
-    FlagSurfaced,
-    RunCompleted,
-    StageCompleted,
-    StreamEvent,
-    stream_analysis_events,
-)
+from pattern_mirror.services.streaming_analysis import stream_analysis_events
 
 router = APIRouter(tags=["analyze"])
 
@@ -44,37 +38,6 @@ class AnalyzeStreamRequest(BaseModel):
 
     document_id: uuid.UUID
     content: str
-
-
-class StageEventData(BaseModel):
-    """Payload of a ``stage`` event: a pipeline stage completed."""
-
-    stage: str
-
-
-class DoneEventData(BaseModel):
-    """Payload of the terminal ``done`` event."""
-
-    analysis_run_id: uuid.UUID
-    status: str
-    flag_count: int
-
-
-def _format_sse(event: StreamEvent) -> bytes:
-    """Render one streaming domain event as an SSE frame (``event:``/``data:`` lines)."""
-    name: str
-    payload: BaseModel
-    match event:
-        case StageCompleted(stage=stage):
-            name, payload = "stage", StageEventData(stage=stage)
-        case FlagSurfaced(flag=flag):
-            name, payload = "flag", serialise_flag(flag)
-        case RunCompleted(analysis_run_id=run_id, status=status, flag_count=count):
-            name, payload = (
-                "done",
-                DoneEventData(analysis_run_id=run_id, status=status.value, flag_count=count),
-            )
-    return f"event: {name}\ndata: {payload.model_dump_json()}\n\n".encode()
 
 
 @router.post(
@@ -113,6 +76,6 @@ async def analyze_stream(
             judge_client=client,
             recommendations_client=client,
         ):
-            yield _format_sse(event)
+            yield format_sse(event)
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
