@@ -56,6 +56,11 @@ def _resolve(
     verdict = by_span.get((flag.start_offset, flag.end_offset))
     if verdict is None:
         return flag
-    if verdict.verdict in _SUPPRESSED_VERDICTS:
-        return replace(flag, verdict=verdict.verdict, explanation=verdict.reasoning)
-    return replace(flag, verdict=verdict.verdict)
+    # A cleared flag carries the ruling's reasoning; an unacceptable one keeps its rule rationale.
+    suppressed = verdict.verdict in _SUPPRESSED_VERDICTS
+    reviewed: CandidateFlag = replace(
+        flag,
+        verdict=verdict.verdict,
+        explanation=verdict.reasoning if suppressed else flag.explanation,
+    )
+    return reviewed
