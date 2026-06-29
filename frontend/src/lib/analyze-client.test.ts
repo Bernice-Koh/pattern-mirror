@@ -3,7 +3,7 @@ import { analyzeDocument, AnalyzeError } from './analyze-client'
 import type { AnalyzeRequest, AnalyzeResponse } from './analyze-contract'
 
 const REQUEST: AnalyzeRequest = {
-  doc_type: 'jd',
+  document_id: 'doc-1',
   content: 'an aggressive leader',
 }
 

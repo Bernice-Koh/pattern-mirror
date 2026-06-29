@@ -1,9 +1,11 @@
-"""The /documents/{doc_id}/recheck endpoint: clears dismissals, then streams a fresh run.
+"""The /documents endpoints: the draft lifecycle (create, restore, autosave, submit) and
+the re-check stream.
 
-Like the streaming endpoint test, these substitute the streaming service with fixed events
-to pin the transport and the recheck trigger without a live engine run; the re-surfacing
-behaviour over the real engine is covered in the service test. The dismissal-clearing side
-effect is asserted directly, since the handler commits it before the stream opens.
+The lifecycle tests round-trip through the real CRUD path. The re-check test substitutes the
+streaming service with fixed events to pin the transport and the recheck trigger without a live
+engine run; the re-surfacing behaviour over the real engine is covered in the service test, and
+the dismissal-clearing side effect is asserted directly since the handler commits it before the
+stream opens.
 """
 
 import uuid
@@ -12,13 +14,14 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.api import documents
 from pattern_mirror.api.deps import get_current_user
 from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
-from pattern_mirror.models.documents import Document
+from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import FlagDismissal
 from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
 from pattern_mirror.models.identity import User
@@ -40,13 +43,97 @@ def owner(db_session: Session) -> User:
 
 
 @pytest.fixture
-def recheck_client(db_session: Session, owner: User) -> Iterator[TestClient]:
+def documents_client(db_session: Session, owner: User) -> Iterator[TestClient]:
     app = create_app()
     app.dependency_overrides[get_session] = lambda: db_session
     app.dependency_overrides[get_current_user] = lambda: owner
     with TestClient(app) as client:
         yield client
     app.dependency_overrides.clear()
+
+
+def test_create_returns_an_empty_draft(documents_client: TestClient) -> None:
+    response = documents_client.post("/documents", json={"doc_type": "jd"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"]
+    assert body["doc_type"] == "jd"
+    assert body["status"] == "draft"
+    assert body["content"] == ""
+    assert body["title"] is None
+
+
+def test_autosave_round_trips_through_get(documents_client: TestClient) -> None:
+    doc_id = documents_client.post("/documents", json={"doc_type": "jd"}).json()["id"]
+
+    patched = documents_client.patch(
+        f"/documents/{doc_id}",
+        json={"title": "Senior Engineer", "content": "We want a digital native."},
+    )
+    assert patched.status_code == 200
+
+    restored = documents_client.get(f"/documents/{doc_id}").json()
+    assert restored["title"] == "Senior Engineer"
+    assert restored["content"] == "We want a digital native."
+    assert restored["status"] == "draft"
+
+
+def test_autosave_persists_no_analysis_run(
+    documents_client: TestClient, db_session: Session
+) -> None:
+    doc_id = documents_client.post("/documents", json={"doc_type": "jd"}).json()["id"]
+
+    documents_client.patch(f"/documents/{doc_id}", json={"content": "We want a digital native."})
+
+    runs = db_session.scalar(
+        select(func.count())
+        .select_from(AnalysisRun)
+        .where(AnalysisRun.document_id == uuid.UUID(doc_id))
+    )
+    assert runs == 0
+
+
+def test_submit_transitions_and_captures_final_text(
+    documents_client: TestClient, db_session: Session
+) -> None:
+    doc_id = documents_client.post("/documents", json={"doc_type": "jd"}).json()["id"]
+    documents_client.patch(f"/documents/{doc_id}", json={"content": "draft text"})
+
+    response = documents_client.post(f"/documents/{doc_id}/submit", json={"content": "final text"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "submitted"
+
+    document = db_session.get(Document, uuid.UUID(doc_id))
+    assert document is not None
+    assert document.submitted_content == "final text"
+    assert document.submitted_at is not None
+
+
+def test_fetching_an_unknown_document_is_rejected(documents_client: TestClient) -> None:
+    response = documents_client.get(f"/documents/{uuid.uuid4()}")
+
+    assert response.status_code == 404
+
+
+def test_autosave_of_another_users_document_is_rejected(
+    documents_client: TestClient, db_session: Session
+) -> None:
+    other = User(
+        external_user_id="documents-other-manager",
+        legal_name="Documents Other Manager",
+        email="documents.other@example.com",
+    )
+    db_session.add(other)
+    db_session.flush()
+    foreign = Document(owner_id=other.id, doc_type=DocType.jd, content="text")
+    db_session.add(foreign)
+    db_session.flush()
+
+    response = documents_client.patch(f"/documents/{foreign.id}", json={"content": "x"})
+
+    assert response.status_code == 404
 
 
 def _dismissal_on(db_session: Session, document: Document) -> FlagDismissal:
@@ -63,7 +150,7 @@ def _dismissal_on(db_session: Session, document: Document) -> FlagDismissal:
 
 
 def test_recheck_clears_dismissals_and_streams_a_terminal_done(
-    recheck_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+    documents_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     document = Document(owner_id=owner.id, doc_type=DocType.jd, content="text")
     db_session.add(document)
@@ -81,7 +168,7 @@ def test_recheck_clears_dismissals_and_streams_a_terminal_done(
 
     monkeypatch.setattr(documents, "stream_analysis_events", fake_stream)
 
-    response = recheck_client.post(f"/documents/{document.id}/recheck", json={"content": "text"})
+    response = documents_client.post(f"/documents/{document.id}/recheck", json={"content": "text"})
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
@@ -93,14 +180,14 @@ def test_recheck_clears_dismissals_and_streams_a_terminal_done(
     assert dismissal.active is False
 
 
-def test_recheck_of_an_unknown_document_is_rejected(recheck_client: TestClient) -> None:
-    response = recheck_client.post(f"/documents/{uuid.uuid4()}/recheck", json={"content": "text"})
+def test_recheck_of_an_unknown_document_is_rejected(documents_client: TestClient) -> None:
+    response = documents_client.post(f"/documents/{uuid.uuid4()}/recheck", json={"content": "text"})
 
     assert response.status_code == 404
 
 
 def test_recheck_of_another_users_document_is_rejected(
-    recheck_client: TestClient, db_session: Session
+    documents_client: TestClient, db_session: Session
 ) -> None:
     other = User(
         external_user_id="recheck-other-manager",
@@ -113,6 +200,6 @@ def test_recheck_of_another_users_document_is_rejected(
     db_session.add(foreign)
     db_session.flush()
 
-    response = recheck_client.post(f"/documents/{foreign.id}/recheck", json={"content": "text"})
+    response = documents_client.post(f"/documents/{foreign.id}/recheck", json={"content": "text"})
 
     assert response.status_code == 404

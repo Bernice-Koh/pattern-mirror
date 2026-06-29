@@ -45,7 +45,7 @@ export interface CitedFlag {
 }
 
 export interface AnalyzeRequest {
-  doc_type: DocType
+  document_id: string
   content: string
 }
 

@@ -7,15 +7,25 @@ import {
   type CitedFlag,
 } from '@/lib/analyze-contract'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { CategorySummary } from '@/components/ui/category-summary'
 import { Editor } from '@/components/ui/editor'
 import { FlagCard } from '@/components/ui/flag-card'
 import { Legend } from '@/components/ui/legend'
+import { AutosaveStatus } from '@/components/jd-studio/autosave-status'
 import { JdEditor, type JdEditorHandle } from '@/components/jd-studio/jd-editor'
+import { useDocumentSession } from '@/components/jd-studio/use-document-session'
 import { useFlagInteractions } from '@/components/jd-studio/use-flag-interactions'
 
+const SUBMIT_LABELS = {
+  idle: 'Publish JD',
+  submitting: 'Publishing…',
+  submitted: 'Published',
+  error: 'Publish JD',
+} as const
+
 export function JdStudio() {
-  const [title, setTitle] = useState('')
+  const session = useDocumentSession('jd')
   const [flags, setFlags] = useState<CitedFlag[]>([])
   const editorRef = useRef<JdEditorHandle>(null)
   const { resolutions, accept, dismiss, undo } = useFlagInteractions()
@@ -55,20 +65,37 @@ export function JdStudio() {
       .sort((a, b) => b.count - a.count)
   }, [visibleFlags])
 
+  // Hold the editor's mount until any remembered draft is restored, so it initialises once
+  // with the restored text rather than flashing empty and overwriting it.
+  if (session.isLoading) {
+    return <main className="h-[calc(100vh-7rem)] bg-surface" />
+  }
+
+  const submitted = session.submitState === 'submitted'
+
   return (
     <main className="flex h-[calc(100vh-7rem)] flex-col bg-surface">
       <div className="grid min-h-0 flex-1 grid-cols-[58%_42%]">
         <div className="overflow-auto border-r border-border">
           <Editor
-            title={title}
-            onTitleChange={setTitle}
+            title={session.title}
+            onTitleChange={session.setTitle}
             titlePlaceholder="Untitled job description"
-            meta="Job description · draft"
+            meta={
+              <span className="inline-flex items-center gap-1.5">
+                <span>
+                  Job description · {submitted ? 'submitted' : 'draft'}
+                </span>
+                {session.saveState !== 'idle' && <span aria-hidden>·</span>}
+                <AutosaveStatus state={session.saveState} />
+              </span>
+            }
           >
             <JdEditor
               ref={editorRef}
-              docType="jd"
-              initialContent=""
+              documentId={session.documentId}
+              initialContent={session.initialContent}
+              onTextChange={session.setContent}
               onFlagsChange={setFlags}
               onApplyRecommendation={applyRecommendation}
               onDismissFlag={(flag) => dismiss(flag.id)}
@@ -108,9 +135,23 @@ export function JdStudio() {
 
       <footer className="flex items-center justify-between border-t border-border bg-surface px-6 py-3.5">
         <Legend />
-        <span className="font-sans text-meta text-ink-faint">
-          This is your own data — visible only to you.
-        </span>
+        <div className="flex items-center gap-4">
+          <span className="font-sans text-meta text-ink-faint">
+            This is your own data — visible only to you.
+          </span>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={session.submit}
+            disabled={
+              !session.documentId ||
+              session.submitState === 'submitting' ||
+              submitted
+            }
+          >
+            {SUBMIT_LABELS[session.submitState]}
+          </Button>
+        </div>
       </footer>
     </main>
   )

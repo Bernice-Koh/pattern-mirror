@@ -19,7 +19,6 @@ import {
   formatCitation,
   sourceLabel,
   type CitedFlag,
-  type DocType,
 } from '@/lib/analyze-contract'
 import { analyzeDocument } from '@/lib/analyze-client'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
@@ -60,8 +59,11 @@ interface HoverState {
 }
 
 export interface JdEditorProps {
-  docType: DocType
+  /** The backing document, created on first edit; null suspends Layer 1 and Layer 2 until then. */
+  documentId: string | null
   initialContent: string
+  /** Report the editor's text up so the session can autosave and submit it. */
+  onTextChange?: (text: string) => void
   onFlagsChange?: (flags: CitedFlag[]) => void
   /** Apply a recommendation from the hover popover (replace the span + log the accept). */
   onApplyRecommendation?: (flag: CitedFlag, suggestion: string) => void
@@ -86,8 +88,9 @@ export interface JdEditorHandle {
 export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
   function JdEditor(
     {
-      docType,
+      documentId,
       initialContent,
+      onTextChange,
       onFlagsChange,
       onApplyRecommendation,
       onDismissFlag,
@@ -113,17 +116,23 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
     const debouncedText = useDebouncedValue(text, ANALYZE_DEBOUNCE_MS)
 
     const { data } = useQuery({
-      queryKey: ['analyze', docType, debouncedText],
-      queryFn: ({ signal }) =>
-        analyzeDocument({ doc_type: docType, content: debouncedText }, signal),
-      enabled: debouncedText.length > 0,
+      queryKey: ['analyze', documentId, debouncedText],
+      queryFn: ({ signal }) => {
+        // enabled gates this on a non-null documentId; the guard narrows the type.
+        if (!documentId) throw new Error('analyze requires a document')
+        return analyzeDocument(
+          { document_id: documentId, content: debouncedText },
+          signal,
+        )
+      },
+      enabled: !!documentId && debouncedText.length > 0,
       placeholderData: keepPreviousData,
     })
 
-    // Layer 2 streams its contextual flags off the document Layer 1 just persisted; a
-    // re-check re-runs that same stream on demand into the same accumulator.
+    // Layer 2 streams its contextual flags off the session's document; a re-check re-runs
+    // that same stream on demand into the same accumulator.
     const { contextualFlags, recheck, isRechecking } = useFlagStream(
-      data?.document_id ?? null,
+      documentId,
       text,
     )
 
@@ -144,6 +153,10 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
       flagsById.current = new Map(decoratedFlags.map((flag) => [flag.id, flag]))
       applyFlags(editor.view, decoratedFlags)
     }, [editor, decoratedFlags])
+
+    useEffect(() => {
+      onTextChange?.(text)
+    }, [text, onTextChange])
 
     useEffect(() => {
       onFlagsChange?.(flags)
@@ -227,7 +240,7 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
             variant="secondary"
             size="sm"
             onClick={recheck}
-            disabled={!data?.document_id || isRechecking}
+            disabled={!documentId || isRechecking}
           >
             <RecheckIcon />
             {isRechecking ? 'Re-checking…' : 'Re-check'}

@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.core.errors import FlagNotFoundError
+from pattern_mirror.models.documents import Document
 from pattern_mirror.models.engine import Flag, FlagDismissal, FlagInteraction
 from pattern_mirror.models.enums import DocType, FlagInteractionKind
 from pattern_mirror.models.identity import User
@@ -32,8 +33,14 @@ def _manager(db_session: Session, suffix: str) -> User:
 
 def _flag_on_a_document(db_session: Session, owner: User) -> Flag:
     """A real persisted dictionary flag, carrying a genuine dismissal signature."""
+    document = Document(owner_id=owner.id, doc_type=DocType.jd)
+    db_session.add(document)
+    db_session.flush()
     result = analyze_document(
-        db_session, owner_id=owner.id, doc_type=DocType.jd, content="We want a digital native."
+        db_session,
+        document_id=document.id,
+        owner_id=owner.id,
+        content="We want a digital native.",
     )
     return result.flags[0]
 

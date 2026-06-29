@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from pattern_mirror.api.sse import format_sse
+from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import AnalysisRunStatus, DocType
 from pattern_mirror.models.identity import User
 from pattern_mirror.services.analysis import analyze_document
@@ -43,10 +44,13 @@ def test_format_sse_renders_a_flag_frame_from_a_persisted_flag(db_session: Sessi
     )
     db_session.add(user)
     db_session.flush()
+    document = Document(owner_id=user.id, doc_type=DocType.jd)
+    db_session.add(document)
+    db_session.flush()
     result = analyze_document(
         db_session,
+        document_id=document.id,
         owner_id=user.id,
-        doc_type=DocType.jd,
         content="We want a digital native.",
     )
 
@@ -68,10 +72,13 @@ def test_format_sse_renders_recommendations_when_a_flag_has_them(db_session: Ses
     )
     db_session.add(user)
     db_session.flush()
+    document = Document(owner_id=user.id, doc_type=DocType.jd)
+    db_session.add(document)
+    db_session.flush()
     result = analyze_document(
         db_session,
+        document_id=document.id,
         owner_id=user.id,
-        doc_type=DocType.jd,
         content="We want a digital native.",
     )
     flag = result.flags[0]
