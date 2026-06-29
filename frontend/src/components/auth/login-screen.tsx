@@ -27,7 +27,7 @@ export function LoginScreen({
   portalLabel,
   home,
   crossLink,
-}: LoginScreenProps) {
+}: Readonly<LoginScreenProps>) {
   const { login } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')

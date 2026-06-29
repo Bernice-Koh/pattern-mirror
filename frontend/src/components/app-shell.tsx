@@ -15,9 +15,9 @@ export function AppShell() {
       'JD Studio',
   })
 
-  function handleLogout() {
+  async function handleLogout() {
     logout()
-    void navigate({ to: '/login' })
+    await navigate({ to: '/login' })
   }
 
   return (
