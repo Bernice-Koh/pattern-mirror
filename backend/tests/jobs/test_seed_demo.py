@@ -1,17 +1,20 @@
-"""seed_demo_users inserts the manager and HR roster with roles, and re-running is idempotent."""
+"""The seed job inserts the user roster and the demo content, and re-running is idempotent."""
 
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.jobs import seed_demo
+from pattern_mirror.jobs.demo_dataset import load_demo_dataset
 from pattern_mirror.jobs.seed_demo import (
     DEMO_HR_EXTERNAL_ID,
     DEMO_MANAGER_EXTERNAL_ID,
+    seed_demo_content,
     seed_demo_users,
 )
-from pattern_mirror.models.enums import UserRole
-from pattern_mirror.models.identity import User, UserRoleAssignment
+from pattern_mirror.models.documents import Document
+from pattern_mirror.models.enums import DocType, UserRole
+from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 
 
 def _user(db_session: Session, external_user_id: str) -> User:
@@ -56,6 +59,59 @@ def test_is_idempotent(db_session: Session) -> None:
     assert roles == 2
 
 
+@pytest.mark.db
+def test_seeds_subjects_and_feedback_owned_by_the_manager(db_session: Session) -> None:
+    seed_demo_users(db_session)
+    db_session.flush()
+    seed_demo_content(db_session)
+    db_session.flush()
+
+    dataset = load_demo_dataset()
+    manager = _user(db_session, DEMO_MANAGER_EXTERNAL_ID)
+    subjects = db_session.scalar(select(func.count()).select_from(Subject))
+    documents = db_session.scalar(
+        select(func.count()).select_from(Document).where(Document.owner_id == manager.id)
+    )
+    assert subjects == len(dataset.subjects)
+    assert documents == len(dataset.documents)
+
+
+@pytest.mark.db
+def test_feedback_document_carries_its_subject_link(db_session: Session) -> None:
+    seed_demo_users(db_session)
+    db_session.flush()
+    seed_demo_content(db_session)
+    db_session.flush()
+
+    feedback = db_session.scalar(
+        select(Document).where(Document.doc_type == DocType.feedback).limit(1)
+    )
+    assert feedback is not None
+    assert feedback.subject_id is not None
+
+
+@pytest.mark.db
+def test_seed_content_is_idempotent(db_session: Session) -> None:
+    seed_demo_users(db_session)
+    db_session.flush()
+    seed_demo_content(db_session)
+    db_session.flush()
+    seed_demo_content(db_session)
+    db_session.flush()
+
+    dataset = load_demo_dataset()
+    subjects = db_session.scalar(select(func.count()).select_from(Subject))
+    documents = db_session.scalar(select(func.count()).select_from(Document))
+    assert subjects == len(dataset.subjects)
+    assert documents == len(dataset.documents)
+
+
+@pytest.mark.db
+def test_seed_content_requires_the_manager(db_session: Session) -> None:
+    with pytest.raises(RuntimeError, match="demo manager is not seeded"):
+        seed_demo_content(db_session)
+
+
 def test_main_seeds_then_commits_and_closes(monkeypatch: pytest.MonkeyPatch) -> None:
     events: list[str] = []
 
@@ -68,8 +124,11 @@ def test_main_seeds_then_commits_and_closes(monkeypatch: pytest.MonkeyPatch) -> 
 
     fake = FakeSession()
     monkeypatch.setattr(seed_demo, "get_sessionmaker", lambda: lambda: fake)
-    monkeypatch.setattr(seed_demo, "seed_demo_users", lambda session: events.append("seed"))
+    monkeypatch.setattr(seed_demo, "seed_demo_users", lambda session: events.append("seed-users"))
+    monkeypatch.setattr(
+        seed_demo, "seed_demo_content", lambda session: events.append("seed-content")
+    )
 
     seed_demo.main()
 
-    assert events == ["seed", "commit", "close"]
+    assert events == ["seed-users", "seed-content", "commit", "close"]
