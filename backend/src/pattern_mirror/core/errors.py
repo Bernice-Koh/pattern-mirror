@@ -15,6 +15,20 @@ class SeedDataMissingError(PatternMirrorError):
     """Required seed data (e.g. the demo manager) is absent from the database."""
 
 
+class InvalidCredentialsError(PatternMirrorError):
+    """Login credentials do not match an active user holding the expected role."""
+
+    def __init__(self) -> None:
+        super().__init__("Invalid credentials.")
+
+
+class NotAuthenticatedError(PatternMirrorError):
+    """The request carries no valid session token."""
+
+    def __init__(self) -> None:
+        super().__init__("Not authenticated.")
+
+
 class DocumentNotFoundError(PatternMirrorError):
     """A requested document does not exist or is not owned by the current user."""
 
