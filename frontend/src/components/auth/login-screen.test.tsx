@@ -95,4 +95,16 @@ describe('LoginScreen', () => {
     )
     expect(navigate).not.toHaveBeenCalled()
   })
+
+  it('shows a generic error when login fails unexpectedly', async () => {
+    loginMock.mockRejectedValue(new Error('network down'))
+    renderScreen()
+
+    submitCredentials('alex.tan@example.com')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Something went wrong. Please try again.',
+    )
+    expect(navigate).not.toHaveBeenCalled()
+  })
 })
