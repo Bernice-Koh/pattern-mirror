@@ -14,6 +14,8 @@ export interface TopBarProps extends HTMLAttributes<HTMLElement> {
   /** Primary action label (renders a red button). Omit for none. */
   action?: string | null
   onAction?: () => void
+  /** When set, the avatar becomes a log-out control. */
+  onLogout?: () => void
 }
 
 /** Persistent app top bar: wordmark + breadcrumb left, context chips + avatar (+ optional action) right. */
@@ -23,9 +25,12 @@ export function TopBar({
   initials = 'DK',
   action = null,
   onAction,
+  onLogout,
   className,
   ...props
 }: TopBarProps) {
+  const avatarClass =
+    'flex size-9 items-center justify-center rounded-full bg-chip-track font-sans text-label font-semibold text-ink-muted'
   return (
     <header
       className={cn(
@@ -50,9 +55,18 @@ export function TopBar({
             {action}
           </Button>
         )}
-        <span className="flex size-9 items-center justify-center rounded-full bg-chip-track font-sans text-label font-semibold text-ink-muted">
-          {initials}
-        </span>
+        {onLogout ? (
+          <button
+            type="button"
+            onClick={onLogout}
+            title="Log out"
+            className={cn(avatarClass, 'transition-colors hover:bg-border')}
+          >
+            {initials}
+          </button>
+        ) : (
+          <span className={avatarClass}>{initials}</span>
+        )}
       </div>
     </header>
   )
