@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from pattern_mirror.core.errors import InvalidCredentialsError, NotAuthenticatedError
 from pattern_mirror.models.enums import UserRole
 from pattern_mirror.models.identity import User, UserRoleAssignment
+from pattern_mirror.services import auth as auth_module
 from pattern_mirror.services.auth import (
     SessionPrincipal,
     authenticate,
@@ -34,6 +35,15 @@ def test_tampered_signature_is_rejected() -> None:
 def test_malformed_token_is_rejected() -> None:
     with pytest.raises(NotAuthenticatedError):
         verify_token("not-a-token")
+
+
+def test_validly_signed_but_unparsable_payload_is_rejected() -> None:
+    # A correct signature over a body that is missing the principal's fields.
+    body = auth_module._b64encode(b"{}")
+    token = f"{body}.{auth_module._sign(body)}"
+
+    with pytest.raises(NotAuthenticatedError):
+        verify_token(token)
 
 
 def _seed_user(session: Session, *, email: str, role: UserRole, active: bool = True) -> User:

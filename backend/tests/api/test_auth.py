@@ -4,16 +4,20 @@ Login is exercised over the real credential path against seeded users; the token
 then used to reach a protected route, confirming get_current_user resolves the bearer token.
 """
 
+import uuid
 from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from pattern_mirror.api.auth import _initials
+from pattern_mirror.core.errors import JudgeVerdictCountError
 from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
 from pattern_mirror.models.enums import UserRole
 from pattern_mirror.models.identity import User, UserRoleAssignment
+from pattern_mirror.services.auth import SessionPrincipal, sign_token
 
 pytestmark = pytest.mark.db
 
@@ -117,3 +121,38 @@ def test_protected_route_with_a_bad_token_is_unauthorized(client: TestClient) ->
     )
 
     assert response.status_code == 401
+
+
+def test_token_for_an_unknown_user_is_unauthorized(client: TestClient) -> None:
+    token = sign_token(SessionPrincipal(user_id=uuid.uuid4(), role=UserRole.manager))
+
+    response = client.post(
+        "/documents",
+        json={"doc_type": "jd"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"] == "NotAuthenticatedError"
+
+
+@pytest.mark.parametrize(
+    ("legal_name", "expected"),
+    [("", "?"), ("Cher", "CH"), ("Alex Tan", "AT"), ("Maria de la Cruz", "MC")],
+)
+def test_initials(legal_name: str, expected: str) -> None:
+    assert _initials(legal_name) == expected
+
+
+def test_unexpected_domain_error_maps_to_500() -> None:
+    app = create_app()
+
+    @app.get("/_raise_domain")
+    def _raise() -> None:
+        raise JudgeVerdictCountError(expected=1, received=2)
+
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        response = test_client.get("/_raise_domain")
+
+    assert response.status_code == 500
+    assert response.json()["error"] == "JudgeVerdictCountError"
