@@ -1,0 +1,55 @@
+{
+  "documents": [
+    {
+      "title": "Gold — Graduate Analyst JD",
+      "doc_type": "jd",
+      "content": "We are looking for a young, digital native to join our energetic team. The role suits a recent graduate eager to learn.",
+      "labels": [
+        {"raw_span": "young", "category": "age", "source_stage": "dictionary", "should_surface": true},
+        {"raw_span": "digital native", "category": "age", "source_stage": "dictionary", "should_surface": true},
+        {"raw_span": "recent graduate", "category": "age", "source_stage": "contextual", "should_surface": true}
+      ]
+    },
+    {
+      "title": "Gold — Regional Sales JD",
+      "doc_type": "jd",
+      "content": "We are seeking a foreigner with strong regional networks. Singaporeans need not apply.",
+      "labels": [
+        {"raw_span": "foreigner", "category": "nationality", "source_stage": "dictionary", "should_surface": true},
+        {"raw_span": "Singaporeans need not apply", "category": "nationality", "source_stage": "contextual", "should_surface": true}
+      ]
+    },
+    {
+      "title": "Gold — Candidate review (travel readiness)",
+      "doc_type": "feedback",
+      "content": "She is pregnant, so she may not be ready for the travel this role demands.",
+      "labels": [
+        {"raw_span": "pregnant", "category": "family_status", "source_stage": "dictionary", "should_surface": true}
+      ]
+    },
+    {
+      "title": "Gold — Mandarin Desk JD",
+      "doc_type": "jd",
+      "content": "Looking for Chinese only candidates fluent in Mandarin.",
+      "labels": [
+        {"raw_span": "Chinese only", "category": "race", "source_stage": "dictionary", "should_surface": true}
+      ]
+    },
+    {
+      "title": "Gold — Candidate review (culture)",
+      "doc_type": "feedback",
+      "content": "He's a real rockstar — aggressive and hungry, works like a bachelor with no commitments.",
+      "labels": [
+        {"raw_span": "bachelor", "category": "family_status", "source_stage": "dictionary", "should_surface": true},
+        {"raw_span": "rockstar", "category": "age", "source_stage": "contextual", "should_surface": true},
+        {"raw_span": "aggressive", "category": "gender", "source_stage": "contextual", "should_surface": true}
+      ]
+    },
+    {
+      "title": "Gold — Backend Engineer JD (clean control)",
+      "doc_type": "jd",
+      "content": "We are hiring a backend engineer with strong Python and SQL skills to maintain our data pipelines.",
+      "labels": []
+    }
+  ]
+}
