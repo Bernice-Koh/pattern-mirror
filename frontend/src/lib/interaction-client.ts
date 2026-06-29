@@ -1,7 +1,7 @@
 /** Client for the flag-interactions endpoint: records a manager's accept/dismiss/undo on
  *  a flag and returns the persisted event. */
 
-import { API_BASE_URL } from '@/lib/api'
+import { apiFetch } from '@/lib/http'
 import type {
   InteractionRequest,
   InteractionResponse,
@@ -25,7 +25,7 @@ export async function recordInteraction(
   request: InteractionRequest,
   signal?: AbortSignal,
 ): Promise<InteractionResponse> {
-  const response = await fetch(`${API_BASE_URL}/flags/${flagId}/interactions`, {
+  const response = await apiFetch(`/flags/${flagId}/interactions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),

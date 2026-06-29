@@ -1,7 +1,7 @@
 /** Client for the /analyze endpoint: Layer 1 of JD Studio's two-trigger model.
  *  POSTs the document text and returns the persisted, cited dictionary flags. */
 
-import { API_BASE_URL } from '@/lib/api'
+import { apiFetch } from '@/lib/http'
 import type { AnalyzeRequest, AnalyzeResponse } from '@/lib/analyze-contract'
 
 /** A non-OK response from /analyze. Surfacing the status lets the caller decide
@@ -22,7 +22,7 @@ export async function analyzeDocument(
   request: AnalyzeRequest,
   signal?: AbortSignal,
 ): Promise<AnalyzeResponse> {
-  const response = await fetch(`${API_BASE_URL}/analyze`, {
+  const response = await apiFetch('/analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),

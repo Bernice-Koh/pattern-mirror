@@ -2,7 +2,7 @@
  *  Autosave and submit are deliberately separate from the analysis path — saving text never
  *  triggers an engine run. */
 
-import { API_BASE_URL } from '@/lib/api'
+import { apiFetch } from '@/lib/http'
 import type {
   CreateDocumentRequest,
   DocumentResponse,
@@ -23,7 +23,7 @@ export class DocumentError extends Error {
 }
 
 async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(path, {
     headers: { 'Content-Type': 'application/json' },
     ...init,
   })

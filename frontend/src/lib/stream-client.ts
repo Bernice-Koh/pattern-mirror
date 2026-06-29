@@ -4,7 +4,7 @@
  *  from Server-Sent Events. POST (not native EventSource) so the text rides in the body
  *  and an AbortSignal cancels the stream when the manager resumes typing. */
 
-import { API_BASE_URL } from '@/lib/api'
+import { apiFetch } from '@/lib/http'
 import type { CitedFlag } from '@/lib/analyze-contract'
 import type { AnalyzeStreamRequest, StreamEvent } from '@/lib/stream-contract'
 
@@ -62,7 +62,7 @@ async function* streamSse(
   body: unknown,
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),

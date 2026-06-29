@@ -16,6 +16,7 @@ export default defineConfig({
   // One entry per backend path the frontend calls; add the next as endpoints land.
   server: {
     proxy: {
+      '/auth': 'http://localhost:8000',
       '/analyze': 'http://localhost:8000',
       '/documents': 'http://localhost:8000',
       '/flags': 'http://localhost:8000',
