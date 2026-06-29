@@ -1,8 +1,8 @@
-"""The /analyze endpoint: submit a document, run Stage 1, return persisted cited flags.
+"""The /analyze endpoint: run Stage 1 over an existing document, return persisted cited flags.
 
-A thin boundary over ``services.analysis``: it validates the request (an unknown
-``doc_type`` is rejected here by the enum), attributes the document to the current user,
-and serialises the persisted result into typed models so no ORM object crosses the API.
+A thin boundary over ``services.analysis``: it validates the request, scopes the document
+to the current user (the service rejects a missing or foreign id), and serialises the
+persisted result into typed models so no ORM object crosses the API.
 """
 
 import uuid
@@ -15,7 +15,6 @@ from sqlalchemy.orm import Session
 from pattern_mirror.api.deps import get_current_user
 from pattern_mirror.api.schemas import FlagResponse, serialise_flag
 from pattern_mirror.db.session import get_session
-from pattern_mirror.models.enums import DocType
 from pattern_mirror.models.identity import User
 from pattern_mirror.services.analysis import AnalysisResult, analyze_document
 
@@ -23,9 +22,9 @@ router = APIRouter(tags=["analyze"])
 
 
 class AnalyzeRequest(BaseModel):
-    """A document submitted for analysis."""
+    """The current text of an existing document, submitted for a Stage-1 pass."""
 
-    doc_type: DocType
+    document_id: uuid.UUID
     content: str
 
 
@@ -54,11 +53,11 @@ def analyze(
     session: Annotated[Session, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> AnalyzeResponse:
-    """Persist the document, run Stage 1, and return its persisted cited flags."""
+    """Run Stage 1 over the document's current text and return its persisted cited flags."""
     result = analyze_document(
         session,
+        document_id=request.document_id,
         owner_id=current_user.id,
-        doc_type=request.doc_type,
         content=request.content,
     )
     return _serialise(result)

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from pattern_mirror.api.deps import get_current_user
 from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
+from pattern_mirror.models.documents import Document
 from pattern_mirror.models.engine import Flag, FlagDismissal, FlagInteraction
 from pattern_mirror.models.enums import DocType
 from pattern_mirror.models.identity import User
@@ -42,8 +43,14 @@ def interaction_client(db_session: Session) -> Iterator[tuple[TestClient, User]]
 
 
 def _a_flag(db_session: Session, owner: User) -> Flag:
+    document = Document(owner_id=owner.id, doc_type=DocType.jd)
+    db_session.add(document)
+    db_session.flush()
     result = analyze_document(
-        db_session, owner_id=owner.id, doc_type=DocType.jd, content="We want a digital native."
+        db_session,
+        document_id=document.id,
+        owner_id=owner.id,
+        content="We want a digital native.",
     )
     return result.flags[0]
 

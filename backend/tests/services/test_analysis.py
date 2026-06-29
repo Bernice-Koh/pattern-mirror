@@ -6,6 +6,7 @@ import uuid
 import pytest
 from sqlalchemy.orm import Session
 
+from pattern_mirror.core.errors import DocumentNotFoundError
 from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.enums import (
@@ -32,14 +33,25 @@ def _manager(db_session: Session) -> User:
     return user
 
 
-def test_persists_document_run_and_cited_flag(db_session: Session) -> None:
+def _draft(db_session: Session, owner: User) -> Document:
+    document = Document(owner_id=owner.id, doc_type=DocType.jd)
+    db_session.add(document)
+    db_session.flush()
+    return document
+
+
+def test_persists_run_and_cited_flag_for_the_document(db_session: Session) -> None:
     owner = _manager(db_session)
+    document = _draft(db_session, owner)
 
     result = analyze_document(
-        db_session, owner_id=owner.id, doc_type=DocType.jd, content="We want a digital native."
+        db_session,
+        document_id=document.id,
+        owner_id=owner.id,
+        content="We want a digital native.",
     )
 
-    assert db_session.get(Document, result.document.id) is not None
+    assert result.document.id == document.id
     run = db_session.get(AnalysisRun, result.run.id)
     assert run is not None
     assert run.status is AnalysisRunStatus.complete
@@ -59,22 +71,45 @@ def test_persists_document_run_and_cited_flag(db_session: Session) -> None:
 
 def test_clean_document_persists_with_no_flags(db_session: Session) -> None:
     owner = _manager(db_session)
+    document = _draft(db_session, owner)
 
     result = analyze_document(
-        db_session, owner_id=owner.id, doc_type=DocType.jd, content="We value teamwork and clarity."
+        db_session,
+        document_id=document.id,
+        owner_id=owner.id,
+        content="We value teamwork and clarity.",
     )
 
-    assert db_session.get(Document, result.document.id) is not None
     assert result.flags == []
 
 
 def test_content_hash_is_the_sha256_of_the_content(db_session: Session) -> None:
     owner = _manager(db_session)
+    document = _draft(db_session, owner)
     content = "We want a digital native."
 
-    result = analyze_document(db_session, owner_id=owner.id, doc_type=DocType.jd, content=content)
+    result = analyze_document(
+        db_session, document_id=document.id, owner_id=owner.id, content=content
+    )
 
     assert result.run.content_hash == hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def test_analysing_a_foreign_document_is_rejected(db_session: Session) -> None:
+    owner = _manager(db_session)
+    document = _draft(db_session, owner)
+    other = User(
+        external_user_id="other-manager",
+        legal_name="Other Manager",
+        email="other.manager@example.com",
+    )
+    db_session.add(other)
+    db_session.flush()
+
+    with pytest.raises(DocumentNotFoundError):
+        analyze_document(
+            db_session, document_id=document.id, owner_id=other.id, content="anything"
+        )
 
 
 def test_build_flag_derives_normalised_span_for_a_contextual_candidate() -> None:

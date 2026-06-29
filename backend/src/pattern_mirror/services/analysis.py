@@ -17,13 +17,14 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from pattern_mirror.core.errors import DocumentNotFoundError
 from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.dictionary import load_active_rules, match_dictionary
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.engine.suppression import normalised_span_of
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
-from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
+from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger
 
 _REGION_CODE = "SG"
 _log = structlog.get_logger("pattern_mirror.services.analysis")
@@ -98,29 +99,37 @@ def build_flag(
 def analyze_document(
     session: Session,
     *,
+    document_id: uuid.UUID,
     owner_id: uuid.UUID,
-    doc_type: DocType,
     content: str,
 ) -> AnalysisResult:
-    """Persist ``content`` as a document, run Stage 1, and persist its flags.
+    """Run Stage 1 over ``content`` for an existing document and persist its flags.
+
+    The document is created up front (``POST /documents``) and analysed in place, so an
+    editing session maps to one document rather than a row per keystroke. Persisting the
+    text is autosave's job; this path only reads the document, then writes the run and its
+    flags.
 
     Args:
         session: The active database session (committed by the caller).
-        owner_id: The manager the document belongs to.
-        doc_type: The document's type, already validated at the API boundary.
-        content: The raw document text.
+        document_id: The document to analyse.
+        owner_id: The manager the document must belong to.
+        content: The current document text.
 
     Returns:
-        The persisted document, its run, and the flags produced, each with its citation
-        and dictionary entry eager-loaded for serialisation.
+        The document, its run, and the flags produced, each with its citation and
+        dictionary entry eager-loaded for serialisation.
+
+    Raises:
+        DocumentNotFoundError: if the document is absent or owned by another user.
     """
-    document = Document(owner_id=owner_id, doc_type=doc_type, content=content)
-    session.add(document)
-    session.flush()
+    document = session.get(Document, document_id)
+    if document is None or document.owner_id != owner_id:
+        raise DocumentNotFoundError(document_id)
 
     run = AnalysisRun(
         document_id=document.id,
-        trigger=AnalysisTrigger.submit,
+        trigger=AnalysisTrigger.typing_pause,
         content_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
     )
     session.add(run)
