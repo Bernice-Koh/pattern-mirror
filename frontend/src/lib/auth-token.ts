@@ -1,7 +1,7 @@
 /** The session token and cached user in localStorage, so a refresh keeps the user signed in.
  *  The role here is a routing hint for the guards; the server still verifies the token. */
 
-import type { AuthUser, UserRole } from '@/lib/auth-contract'
+import type { AuthUser } from '@/lib/auth-contract'
 
 const STORAGE_KEY = 'pm.auth'
 
@@ -30,8 +30,4 @@ export function clearStoredAuth(): void {
 
 export function getToken(): string | null {
   return getStoredAuth()?.token ?? null
-}
-
-export function getStoredRole(): UserRole | null {
-  return getStoredAuth()?.user.role ?? null
 }

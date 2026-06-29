@@ -30,9 +30,11 @@ export default defineConfig({
       // lcov feeds SonarCloud; text is the local terminal summary.
       reporter: ['text', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
-      // Entry points, type-only files, and the tests themselves aren't measured.
+      // Entry points, declarative route wiring (logic lives in lib/auth-guards), type-only
+      // files, and the tests themselves aren't measured.
       exclude: [
         'src/main.tsx',
+        'src/router.tsx',
         'src/**/*.d.ts',
         'src/test/**',
         'src/**/*.test.{ts,tsx}',

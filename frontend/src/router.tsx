@@ -2,7 +2,6 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
-  redirect,
 } from '@tanstack/react-router'
 import { AppShell } from '@/components/app-shell'
 import { JdStudio } from '@/pages/jd-studio'
@@ -12,44 +11,18 @@ import { PromotionWriteup } from '@/pages/promotion-writeup'
 import { HrPortal } from '@/pages/hr-portal'
 import { Login } from '@/pages/login'
 import { HrLogin } from '@/pages/hr-login'
-import { getStoredAuth } from '@/lib/auth-token'
-import type { UserRole } from '@/lib/auth-contract'
-
-const HOME: Record<UserRole, '/jd-studio' | '/hr-portal'> = {
-  manager: '/jd-studio',
-  hr: '/hr-portal',
-}
-
-/** Guard a role's surfaces: send anonymous users to login, and users in the other role home. */
-function requireRole(role: UserRole) {
-  return () => {
-    const auth = getStoredAuth()
-    if (auth === null) {
-      throw redirect({ to: role === 'hr' ? '/hr-login' : '/login' })
-    }
-    if (auth.user.role !== role) {
-      throw redirect({ to: HOME[auth.user.role] })
-    }
-  }
-}
-
-/** On a login screen while already signed in: skip straight to the user's home. */
-function redirectIfAuthenticated() {
-  const auth = getStoredAuth()
-  if (auth !== null) {
-    throw redirect({ to: HOME[auth.user.role] })
-  }
-}
+import {
+  indexRedirect,
+  redirectIfAuthenticated,
+  requireRole,
+} from '@/lib/auth-guards'
 
 const rootRoute = createRootRoute()
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
-  beforeLoad: () => {
-    const auth = getStoredAuth()
-    throw redirect({ to: auth === null ? '/login' : HOME[auth.user.role] })
-  },
+  beforeLoad: indexRedirect,
 })
 
 const loginRoute = createRoute({
