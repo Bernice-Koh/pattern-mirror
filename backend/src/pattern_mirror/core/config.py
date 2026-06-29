@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"]
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
+    # HMAC key for signing mock session tokens. The default keeps tests and local
+    # boot working without extra env plumbing; production overrides it. This is mock
+    # auth, not real security, so a shipped default is acceptable.
+    session_secret: str = "dev-only-mock-session-key-override-in-production"
+
     # SQLAlchemy URL for the development/production database, e.g.
     # postgresql+psycopg://user:pass@host:5432/pattern_mirror. Kept as a string
     # rather than PostgresDsn so the psycopg driver suffix passes through to

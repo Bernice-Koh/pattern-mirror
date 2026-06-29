@@ -1,31 +1,38 @@
 """Shared FastAPI dependencies.
 
-``get_current_user`` is a pre-auth placeholder: until the login flow exists, the
-analyze endpoint attributes every document to the seeded demo manager. When real
-authentication lands, only this function changes — the endpoint contract does not.
+``get_current_user`` resolves the signed-in user from the request's bearer token. It is the one
+seam every authenticated endpoint depends on; tests override it directly to inject a known user.
 """
 
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import select
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from pattern_mirror.core.errors import SeedDataMissingError
+from pattern_mirror.core.errors import NotAuthenticatedError
 from pattern_mirror.db.session import get_session
-from pattern_mirror.jobs.seed_demo import DEMO_MANAGER_EXTERNAL_ID
 from pattern_mirror.models.identity import User
+from pattern_mirror.services.auth import verify_token
+
+# auto_error=False so a missing header yields None and raises our typed 401 rather than
+# Starlette's bare 403.
+_bearer = HTTPBearer(auto_error=False)
 
 
-def get_current_user(session: Annotated[Session, Depends(get_session)]) -> User:
-    """Return the authenticated user; currently the seeded demo manager.
+def get_current_user(
+    session: Annotated[Session, Depends(get_session)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> User:
+    """Return the user named by the request's session token.
 
     Raises:
-        SeedDataMissingError: if the demo manager has not been seeded.
+        NotAuthenticatedError: if the token is absent, invalid, or names an inactive/unknown user.
     """
-    user = session.scalar(select(User).where(User.external_user_id == DEMO_MANAGER_EXTERNAL_ID))
-    if user is None:
-        raise SeedDataMissingError(
-            "Demo manager not seeded; run 'python -m pattern_mirror.jobs.seed_demo'."
-        )
+    if credentials is None:
+        raise NotAuthenticatedError
+    principal = verify_token(credentials.credentials)
+    user = session.get(User, principal.user_id)
+    if user is None or not user.active:
+        raise NotAuthenticatedError
     return user

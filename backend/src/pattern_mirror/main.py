@@ -16,11 +16,13 @@ from fastapi.responses import JSONResponse
 from starlette.requests import Request
 
 from pattern_mirror import __version__
-from pattern_mirror.api import analyze, documents, health, interactions, streaming
+from pattern_mirror.api import analyze, auth, documents, health, interactions, streaming
 from pattern_mirror.core.config import get_settings
 from pattern_mirror.core.errors import (
     DocumentNotFoundError,
     FlagNotFoundError,
+    InvalidCredentialsError,
+    NotAuthenticatedError,
     PatternMirrorError,
 )
 from pattern_mirror.core.logging import configure_logging
@@ -57,6 +59,14 @@ def _handle_not_found(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+def _handle_unauthorized(request: Request, exc: Exception) -> JSONResponse:
+    # Bad/absent credentials or token: a client authentication error (401), not a server fault.
+    return JSONResponse(
+        status_code=401,
+        content={"error": type(exc).__name__, "detail": str(exc)},
+    )
+
+
 def create_app() -> FastAPI:
     """Build and configure the FastAPI application.
 
@@ -76,8 +86,11 @@ def create_app() -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
     app.add_exception_handler(DocumentNotFoundError, _handle_not_found)
     app.add_exception_handler(FlagNotFoundError, _handle_not_found)
+    app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
+    app.add_exception_handler(NotAuthenticatedError, _handle_unauthorized)
     app.add_exception_handler(PatternMirrorError, _handle_domain_error)
     app.include_router(health.router)
+    app.include_router(auth.router)
     app.include_router(analyze.router)
     app.include_router(streaming.router)
     app.include_router(interactions.router)
