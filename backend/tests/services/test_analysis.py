@@ -107,9 +107,7 @@ def test_analysing_a_foreign_document_is_rejected(db_session: Session) -> None:
     db_session.flush()
 
     with pytest.raises(DocumentNotFoundError):
-        analyze_document(
-            db_session, document_id=document.id, owner_id=other.id, content="anything"
-        )
+        analyze_document(db_session, document_id=document.id, owner_id=other.id, content="anything")
 
 
 def test_build_flag_derives_normalised_span_for_a_contextual_candidate() -> None:

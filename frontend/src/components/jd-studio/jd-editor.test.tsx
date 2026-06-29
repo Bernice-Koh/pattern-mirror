@@ -86,7 +86,9 @@ describe('JdEditor', () => {
 
   it('applyRecommendation replaces the flagged span with the chosen phrasing', () => {
     const ref = createRef<JdEditorHandle>()
-    render(<JdEditor ref={ref} documentId={null} initialContent="" />, { wrapper })
+    render(<JdEditor ref={ref} documentId={null} initialContent="" />, {
+      wrapper,
+    })
 
     act(() => ref.current!.applyRecommendation(FLAG, 'team contribution'))
 
@@ -98,7 +100,9 @@ describe('JdEditor', () => {
 
   it('applyRecommendation is a no-op when the span no longer matches', () => {
     const ref = createRef<JdEditorHandle>()
-    render(<JdEditor ref={ref} documentId={null} initialContent="" />, { wrapper })
+    render(<JdEditor ref={ref} documentId={null} initialContent="" />, {
+      wrapper,
+    })
 
     act(() =>
       ref.current!.applyRecommendation({ ...FLAG, raw_span: 'stale' }, 'x'),
@@ -132,7 +136,11 @@ describe('JdEditor', () => {
   it('dismisses the flag from the popover', () => {
     const onDismissFlag = vi.fn()
     render(
-      <JdEditor documentId={null} initialContent="" onDismissFlag={onDismissFlag} />,
+      <JdEditor
+        documentId={null}
+        initialContent=""
+        onDismissFlag={onDismissFlag}
+      />,
       { wrapper },
     )
 

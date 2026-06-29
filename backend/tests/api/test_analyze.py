@@ -84,9 +84,7 @@ def test_unknown_document_is_rejected(analyze_client: TestClient) -> None:
     assert response.status_code == 404
 
 
-def test_response_carries_only_typed_fields(
-    analyze_client: TestClient, draft: Document
-) -> None:
+def test_response_carries_only_typed_fields(analyze_client: TestClient, draft: Document) -> None:
     response = analyze_client.post(
         "/analyze", json={"document_id": str(draft.id), "content": "We want a digital native."}
     )

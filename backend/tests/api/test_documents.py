@@ -181,9 +181,7 @@ def test_recheck_clears_dismissals_and_streams_a_terminal_done(
 
 
 def test_recheck_of_an_unknown_document_is_rejected(documents_client: TestClient) -> None:
-    response = documents_client.post(
-        f"/documents/{uuid.uuid4()}/recheck", json={"content": "text"}
-    )
+    response = documents_client.post(f"/documents/{uuid.uuid4()}/recheck", json={"content": "text"})
 
     assert response.status_code == 404
 
