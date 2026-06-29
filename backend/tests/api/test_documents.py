@@ -64,6 +64,39 @@ def test_create_returns_an_empty_draft(documents_client: TestClient) -> None:
     assert body["title"] is None
 
 
+def test_list_returns_the_owners_documents_without_content(
+    documents_client: TestClient, db_session: Session, owner: User
+) -> None:
+    mine = Document(
+        owner_id=owner.id,
+        doc_type=DocType.jd,
+        title="Senior Engineer",
+        role_title="Engineering",
+        content="draft text",
+    )
+    other = User(
+        external_user_id="documents-list-other",
+        legal_name="Documents List Other",
+        email="documents.list.other@example.com",
+    )
+    db_session.add_all([mine, other])
+    db_session.flush()
+    db_session.add(Document(owner_id=other.id, doc_type=DocType.jd, content="hidden"))
+    db_session.flush()
+
+    response = documents_client.get("/documents")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["id"] for item in body] == [str(mine.id)]
+    summary = body[0]
+    assert summary["title"] == "Senior Engineer"
+    assert summary["role_title"] == "Engineering"
+    assert summary["status"] == "draft"
+    assert summary["created_at"]
+    assert "content" not in summary
+
+
 def test_autosave_round_trips_through_get(documents_client: TestClient) -> None:
     doc_id = documents_client.post("/documents", json={"doc_type": "jd"}).json()["id"]
 

@@ -1,6 +1,7 @@
 """The document lifecycle service: create a draft, autosave it, submit it, owner-scoped."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import func, select
@@ -13,6 +14,7 @@ from pattern_mirror.models.identity import User
 from pattern_mirror.services.documents import (
     create_draft,
     get_draft,
+    list_documents,
     submit_document,
     update_draft,
 )
@@ -97,6 +99,28 @@ def test_submit_captures_final_text_and_transitions(db_session: Session) -> None
     assert submitted.content == "final text"
     assert submitted.submitted_content == "final text"
     assert submitted.submitted_at is not None
+
+
+def test_list_documents_returns_only_the_owners_newest_first(db_session: Session) -> None:
+    owner = _manager(db_session, "docs-list-owner")
+    other = _manager(db_session, "docs-list-other")
+    older = create_draft(db_session, owner_id=owner.id, doc_type=DocType.jd)
+    newer = create_draft(db_session, owner_id=owner.id, doc_type=DocType.feedback)
+    create_draft(db_session, owner_id=other.id, doc_type=DocType.jd)
+    # Postgres now() is the transaction time, so same-transaction rows tie; pin the order.
+    older.created_at = datetime(2026, 6, 1, tzinfo=UTC)
+    newer.created_at = datetime(2026, 6, 2, tzinfo=UTC)
+    db_session.flush()
+
+    listed = list_documents(db_session, owner_id=owner.id)
+
+    assert [document.id for document in listed] == [newer.id, older.id]
+
+
+def test_list_documents_is_empty_for_a_manager_with_none(db_session: Session) -> None:
+    owner = _manager(db_session, "docs-list-empty")
+
+    assert list_documents(db_session, owner_id=owner.id) == []
 
 
 @pytest.mark.parametrize("action", ["get", "update", "submit"])
