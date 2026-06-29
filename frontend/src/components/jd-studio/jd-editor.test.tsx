@@ -86,7 +86,7 @@ describe('JdEditor', () => {
 
   it('applyRecommendation replaces the flagged span with the chosen phrasing', () => {
     const ref = createRef<JdEditorHandle>()
-    render(<JdEditor ref={ref} docType="jd" initialContent="" />, { wrapper })
+    render(<JdEditor ref={ref} documentId={null} initialContent="" />, { wrapper })
 
     act(() => ref.current!.applyRecommendation(FLAG, 'team contribution'))
 
@@ -98,7 +98,7 @@ describe('JdEditor', () => {
 
   it('applyRecommendation is a no-op when the span no longer matches', () => {
     const ref = createRef<JdEditorHandle>()
-    render(<JdEditor ref={ref} docType="jd" initialContent="" />, { wrapper })
+    render(<JdEditor ref={ref} documentId={null} initialContent="" />, { wrapper })
 
     act(() =>
       ref.current!.applyRecommendation({ ...FLAG, raw_span: 'stale' }, 'x'),
@@ -111,7 +111,7 @@ describe('JdEditor', () => {
     const onApplyRecommendation = vi.fn()
     render(
       <JdEditor
-        docType="jd"
+        documentId={null}
         initialContent=""
         onApplyRecommendation={onApplyRecommendation}
       />,
@@ -132,7 +132,7 @@ describe('JdEditor', () => {
   it('dismisses the flag from the popover', () => {
     const onDismissFlag = vi.fn()
     render(
-      <JdEditor docType="jd" initialContent="" onDismissFlag={onDismissFlag} />,
+      <JdEditor documentId={null} initialContent="" onDismissFlag={onDismissFlag} />,
       { wrapper },
     )
 
@@ -145,7 +145,7 @@ describe('JdEditor', () => {
   it('clears a dismissed flag from the inline decorations', () => {
     render(
       <JdEditor
-        docType="jd"
+        documentId={null}
         initialContent=""
         dismissedFlagIds={new Set(['f1'])}
       />,
@@ -160,7 +160,7 @@ describe('JdEditor', () => {
   it('does not open a popover for a dismissed flag on hover', () => {
     render(
       <JdEditor
-        docType="jd"
+        documentId={null}
         initialContent=""
         dismissedFlagIds={new Set(['f1'])}
       />,
@@ -173,7 +173,7 @@ describe('JdEditor', () => {
   })
 
   it('disables the Re-check button until a document exists', () => {
-    render(<JdEditor docType="jd" initialContent="" />, { wrapper })
+    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
 
     expect(screen.getByRole('button', { name: /re-check/i })).toBeDisabled()
   })
@@ -184,13 +184,13 @@ describe('JdEditor', () => {
       recheck: vi.fn(),
       isRechecking: true,
     })
-    render(<JdEditor docType="jd" initialContent="" />, { wrapper })
+    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
 
     expect(screen.getByRole('button', { name: /re-checking/i })).toBeDisabled()
   })
 
   it('schedules a close when the pointer leaves the flag, and reopens on re-hover', () => {
-    render(<JdEditor docType="jd" initialContent="" />, { wrapper })
+    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
     const span = screen.getByText('young rockstar')
 
     fireEvent.mouseOver(span)
