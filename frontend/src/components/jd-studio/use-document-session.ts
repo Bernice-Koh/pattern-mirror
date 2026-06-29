@@ -16,6 +16,23 @@ const STORAGE_PREFIX = 'pm:document:'
 export type SaveState = 'idle' | 'saving' | 'saved' | 'error'
 export type SubmitState = 'idle' | 'submitting' | 'submitted' | 'error'
 
+type MutationStatus = 'idle' | 'pending' | 'error' | 'success'
+
+// Map react-query's mutation status onto our UI states, so the lookup stays flat and exhaustive.
+const SAVE_STATE_BY_STATUS: Record<MutationStatus, SaveState> = {
+  idle: 'idle',
+  pending: 'saving',
+  error: 'error',
+  success: 'saved',
+}
+
+const SUBMIT_STATE_BY_STATUS: Record<MutationStatus, SubmitState> = {
+  idle: 'idle',
+  pending: 'submitting',
+  error: 'error',
+  success: 'submitted',
+}
+
 // localStorage may be unavailable (private mode); remembering the draft id is best-effort.
 function readStoredId(docType: DocType): string | null {
   try {
@@ -146,23 +163,8 @@ export function useDocumentSession(docType: DocType): DocumentSession {
     runSubmit({ content })
   }, [documentId, content, submitStatus, runSubmit])
 
-  const saveState: SaveState =
-    saveStatus === 'pending'
-      ? 'saving'
-      : saveStatus === 'error'
-        ? 'error'
-        : saveStatus === 'success'
-          ? 'saved'
-          : 'idle'
-
-  const submitState: SubmitState =
-    submitStatus === 'pending'
-      ? 'submitting'
-      : submitStatus === 'error'
-        ? 'error'
-        : submitStatus === 'success'
-          ? 'submitted'
-          : 'idle'
+  const saveState = SAVE_STATE_BY_STATUS[saveStatus]
+  const submitState = SUBMIT_STATE_BY_STATUS[submitStatus]
 
   return {
     isLoading,

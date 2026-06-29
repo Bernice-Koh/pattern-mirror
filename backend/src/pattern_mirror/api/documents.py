@@ -81,7 +81,7 @@ def _serialise_document(document: Document) -> DocumentResponse:
     )
 
 
-@router.post("/documents", response_model=DocumentResponse, summary="Create a draft document")
+@router.post("/documents", summary="Create a draft document")
 def create_document(
     request: CreateDocumentRequest,
     session: Annotated[Session, Depends(get_session)],
@@ -92,9 +92,7 @@ def create_document(
     return _serialise_document(document)
 
 
-@router.get(
-    "/documents/{doc_id}", response_model=DocumentResponse, summary="Fetch a document by id"
-)
+@router.get("/documents/{doc_id}", summary="Fetch a document by id")
 def get_document(
     doc_id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
@@ -105,9 +103,7 @@ def get_document(
     return _serialise_document(document)
 
 
-@router.patch(
-    "/documents/{doc_id}", response_model=DocumentResponse, summary="Autosave a draft's text"
-)
+@router.patch("/documents/{doc_id}", summary="Autosave a draft's text")
 def update_document(
     doc_id: uuid.UUID,
     request: UpdateDraftRequest,
@@ -127,7 +123,6 @@ def update_document(
 
 @router.post(
     "/documents/{doc_id}/submit",
-    response_model=DocumentResponse,
     summary="Submit a draft, capturing its final text",
 )
 def submit(

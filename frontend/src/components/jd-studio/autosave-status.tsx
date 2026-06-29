@@ -22,13 +22,13 @@ function CloudCheck() {
 
 /** The draft's transient save state, shown in the editor meta line. Idle renders nothing so
  *  the line stays quiet until the first autosave. */
-export function AutosaveStatus({ state }: { state: SaveState }) {
+export function AutosaveStatus({ state }: Readonly<{ state: SaveState }>) {
   if (state === 'idle') return null
 
   if (state === 'saving') {
     return (
       <span className="inline-flex items-center gap-1.5 text-ink-faint">
-        <span className="size-3 animate-spin rounded-full border-[1.6px] border-border border-t-ink-faint" />
+        <span className="size-3 animate-spin rounded-full border-[1.6px] border-border border-t-ink-faint" />{' '}
         Saving…
       </span>
     )
