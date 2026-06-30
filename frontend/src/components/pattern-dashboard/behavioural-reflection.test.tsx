@@ -89,6 +89,7 @@ describe('BehaviouralReflection', () => {
     expect(screen.getByText('Adoption rate over time')).toBeInTheDocument()
     expect(screen.getByText('Jan')).toBeInTheDocument()
     expect(screen.getByText('Jun')).toBeInTheDocument()
+    expect(screen.getByText('2026')).toBeInTheDocument()
     expect(
       screen.getByText(
         'Your adoption rate went from 22% in Jan to 64% in Jun.',
@@ -155,7 +156,7 @@ describe('BehaviouralReflection', () => {
     render(<BehaviouralReflection patterns={[]} trend={[]} />, { wrapper })
 
     expect(
-      screen.getByText(/No decision patterns have cleared/),
+      screen.getByText(/No clear patterns in your decisions/),
     ).toBeInTheDocument()
   })
 })

@@ -118,7 +118,7 @@ describe('YourPatterns', () => {
     render(<YourPatterns />, { wrapper })
 
     expect(
-      await screen.findByText(/No writing patterns have cleared/),
+      await screen.findByText(/No clear patterns have emerged/),
     ).toBeInTheDocument()
   })
 

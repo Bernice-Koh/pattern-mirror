@@ -2,7 +2,7 @@ import type {
   AdoptionTrendPoint,
   DecisionPattern,
 } from '@/lib/patterns-contract'
-import { periodLabel } from '@/lib/pattern-format'
+import { periodLabel, yearSpanLabel } from '@/lib/pattern-format'
 import { BarChart, type BarDatum } from '@/components/ui/bar-chart'
 import { BehaviouralPatternCard } from '@/components/pattern-dashboard/behavioural-pattern-card'
 
@@ -62,6 +62,9 @@ export function BehaviouralReflection({
             barClassName="bg-green-positive"
             caption={trendCaption(trend)}
           />
+          <p className="mt-2 text-center font-sans text-meta text-ink-faint">
+            {yearSpanLabel(trend.map((point) => point.period))}
+          </p>
         </div>
       )}
 
@@ -73,8 +76,8 @@ export function BehaviouralReflection({
         </div>
       ) : (
         <p className="rounded-card bg-surface p-5 font-sans text-body-sm text-ink-muted shadow-ring-card">
-          No decision patterns have cleared significance testing yet. Patterns
-          appear here only once they are unlikely to be coincidence.
+          No clear patterns in your decisions yet. Patterns appear here only
+          once they are unlikely to be a coincidence.
         </p>
       )}
     </section>
