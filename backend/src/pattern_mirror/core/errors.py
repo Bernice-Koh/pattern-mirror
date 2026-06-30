@@ -29,6 +29,13 @@ class NotAuthenticatedError(PatternMirrorError):
         super().__init__("Not authenticated.")
 
 
+class NotAuthorizedError(PatternMirrorError):
+    """The caller is authenticated but lacks the role required for this resource."""
+
+    def __init__(self) -> None:
+        super().__init__("Not authorized.")
+
+
 class DocumentNotFoundError(PatternMirrorError):
     """A requested document does not exist or is not owned by the current user."""
 

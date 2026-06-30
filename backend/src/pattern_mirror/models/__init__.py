@@ -7,6 +7,7 @@ reason: a model missing from here is invisible to autogenerate.
 """
 
 from pattern_mirror.models.audit import AgentRun
+from pattern_mirror.models.calibration import CalibrationRun
 from pattern_mirror.models.dictionary import Dictionary
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag, FlagDismissal
@@ -16,6 +17,7 @@ from pattern_mirror.models.reference import Citation, Region
 __all__ = [
     "AgentRun",
     "AnalysisRun",
+    "CalibrationRun",
     "Citation",
     "Dictionary",
     "Document",

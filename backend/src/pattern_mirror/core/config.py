@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     # exact p-value is strictly below this. In config so the bar is tunable without a code change.
     pattern_significance_threshold: float = 0.05
 
+    # Minimum distinct managers an HR aggregate cell must cover (#70, §11): cells below this are
+    # suppressed so no firm-level figure can re-identify an individual manager.
+    hr_min_cell_size: int = 3
+
 
 @lru_cache
 def get_settings() -> Settings:
