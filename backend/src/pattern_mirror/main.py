@@ -21,6 +21,7 @@ from pattern_mirror.api import (
     auth,
     documents,
     health,
+    hr,
     interactions,
     patterns,
     streaming,
@@ -31,6 +32,7 @@ from pattern_mirror.core.errors import (
     FlagNotFoundError,
     InvalidCredentialsError,
     NotAuthenticatedError,
+    NotAuthorizedError,
     PatternMirrorError,
 )
 from pattern_mirror.core.logging import configure_logging
@@ -75,6 +77,14 @@ def _handle_unauthorized(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+def _handle_forbidden(request: Request, exc: Exception) -> JSONResponse:
+    # Authenticated but lacking the required role: an authorization error (403), not a 401.
+    return JSONResponse(
+        status_code=403,
+        content={"error": type(exc).__name__, "detail": str(exc)},
+    )
+
+
 def create_app() -> FastAPI:
     """Build and configure the FastAPI application.
 
@@ -96,6 +106,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(FlagNotFoundError, _handle_not_found)
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
     app.add_exception_handler(NotAuthenticatedError, _handle_unauthorized)
+    app.add_exception_handler(NotAuthorizedError, _handle_forbidden)
     app.add_exception_handler(PatternMirrorError, _handle_domain_error)
     app.include_router(health.router)
     app.include_router(auth.router)
@@ -104,4 +115,5 @@ def create_app() -> FastAPI:
     app.include_router(interactions.router)
     app.include_router(documents.router)
     app.include_router(patterns.router)
+    app.include_router(hr.router)
     return app
