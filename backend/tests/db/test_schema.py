@@ -8,19 +8,25 @@ import pytest
 from sqlalchemy import Engine, inspect, select
 from sqlalchemy.orm import Session
 
+from pattern_mirror.models.audit import AgentRun
+from pattern_mirror.models.dictionary import Dictionary
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag, FlagDismissal
 from pattern_mirror.models.enums import (
+    AgentName,
     AnalysisTrigger,
     BiasCategory,
+    CitationSourceType,
+    DictionaryAdditionStatus,
     DocType,
     FlagScope,
     FlagSourceStage,
     SubjectType,
     UserRole,
 )
+from pattern_mirror.models.growth import DictionaryProposal, PendingDictionaryAddition
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
-from pattern_mirror.models.reference import Region
+from pattern_mirror.models.reference import Citation, Region
 
 pytestmark = pytest.mark.db
 
@@ -37,6 +43,8 @@ _ALL_FOUNDATION_TABLES = {
     "flags",
     "flag_dismissals",
     "agent_runs",
+    "dictionary_proposals",
+    "pending_dictionary_additions",
 }
 
 
@@ -149,3 +157,96 @@ def test_orm_round_trip_links_the_engine_graph(db_session: Session) -> None:
     assert stored_flag.document.subject.subject_type is SubjectType.candidate
     assert stored_flag.suppressed_by_dismissal is not None
     assert stored_flag in stored_flag.suppressed_by_dismissal.suppressed_flags
+
+
+def test_pending_additions_queue_carries_the_hr_fields(migrated_engine: Engine) -> None:
+    columns = {
+        col["name"]: col
+        for col in inspect(migrated_engine).get_columns("pending_dictionary_additions")
+    }
+
+    assert {"proposal_id", "phrase", "lemma_key", "proposed_category", "status"}.issubset(columns)
+    assert columns["proposal_id"]["nullable"] is False
+    assert columns["status"]["nullable"] is False
+    assert columns["proposed_category"]["nullable"] is False
+    # Severity was dropped end to end (ADR 0009); a grown entry proposes a category only.
+    assert "proposed_severity" not in columns
+
+
+def test_dictionaries_carry_growth_provenance(migrated_engine: Engine) -> None:
+    columns = {col["name"]: col for col in inspect(migrated_engine).get_columns("dictionaries")}
+
+    assert columns["last_updated_by"]["nullable"] is True
+    assert columns["source_proposal_id"]["nullable"] is True
+    # "When" is the existing updated_at; no second timestamp column.
+    assert "last_updated_at" not in columns
+
+
+def test_agent_runs_link_to_a_growth_proposal(migrated_engine: Engine) -> None:
+    columns = {col["name"]: col for col in inspect(migrated_engine).get_columns("agent_runs")}
+
+    assert "proposal_id" in columns
+    assert columns["proposal_id"]["nullable"] is True
+
+
+def test_orm_round_trip_links_the_growth_graph(db_session: Session) -> None:
+    approver = User(
+        external_user_id="ext-hr-1",
+        legal_name="Mock HR",
+        email="mock.hr@example.test",
+    )
+    citation = Citation(
+        source_type=CitationSourceType.academic,
+        title="Synthetic study",
+        reference="doi:synthetic",
+    )
+    proposal = DictionaryProposal(phrase="culture fit", lemma_key="culture fit", citation=citation)
+    agent_names = (
+        AgentName.proposer,
+        AgentName.skeptic,
+        AgentName.categorizer,
+        AgentName.citation,
+    )
+    arguments = [
+        AgentRun(agent_name=name, model="claude-mock", input={}, output={}, proposal=proposal)
+        for name in agent_names
+    ]
+    queued = PendingDictionaryAddition(
+        proposal=proposal,
+        phrase="culture fit",
+        lemma_key="culture fit",
+        proposed_category=BiasCategory.age,
+    )
+    db_session.add_all([approver, *arguments, queued])
+    db_session.flush()  # populate server-generated ids before the column-only FK is set
+
+    live_entry = Dictionary(
+        region_code="SG",
+        category=BiasCategory.age,
+        term="culture fit",
+        lemma_key="culture fit",
+        citation=citation,
+        explanation="synthetic",
+        last_updated_by=approver.id,
+        source_proposal=proposal,
+    )
+    db_session.add(live_entry)
+    db_session.flush()
+    db_session.expire_all()
+
+    stored = db_session.scalars(
+        select(PendingDictionaryAddition).where(PendingDictionaryAddition.phrase == "culture fit")
+    ).one()
+    assert stored.status is DictionaryAdditionStatus.pending
+    assert stored.proposal.citation is not None
+    assert stored.proposal.citation.title == "Synthetic study"
+
+    runs = db_session.scalars(
+        select(AgentRun).where(AgentRun.proposal_id == stored.proposal_id)
+    ).all()
+    assert len(runs) == 4
+
+    grown = db_session.scalars(
+        select(Dictionary).where(Dictionary.source_proposal_id == stored.proposal_id)
+    ).one()
+    assert grown.last_updated_by == approver.id
