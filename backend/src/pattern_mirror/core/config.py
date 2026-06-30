@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     # here fall back to ``judge_confidence_threshold``.
     judge_confidence_threshold_overrides: dict[BiasCategory, float] = {}
 
+    # The Pattern Aggregator's significance gate (#66): a pattern surfaces only if its Fisher's
+    # exact p-value is strictly below this. In config so the bar is tunable without a code change.
+    pattern_significance_threshold: float = 0.05
+
 
 @lru_cache
 def get_settings() -> Settings:
