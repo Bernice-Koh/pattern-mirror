@@ -4,16 +4,13 @@ import {
   type DashboardView,
 } from '@/components/pattern-dashboard/dashboard-nav'
 import { MyDocuments } from '@/components/pattern-dashboard/my-documents'
+import { YourPatterns } from '@/components/pattern-dashboard/your-patterns'
 
-// Copy for the views #69 doesn't own; Your patterns is filled by #67/#68, the rest are static.
+// Copy for the static views; Your patterns (#67) and My documents (#69) own their own components.
 const PLACEHOLDERS: Record<
-  Exclude<DashboardView, 'documents'>,
+  'profile' | 'settings',
   { title: string; body: string }
 > = {
-  patterns: {
-    title: 'Your patterns',
-    body: 'How your writing and decisions have changed over time. Only patterns that pass Fisher’s exact significance testing appear here.',
-  },
   profile: {
     title: 'Profile',
     body: 'Your role, reports, and team — used only to scope your own patterns.',
@@ -24,9 +21,7 @@ const PLACEHOLDERS: Record<
   },
 }
 
-function PlaceholderView({
-  view,
-}: Readonly<{ view: Exclude<DashboardView, 'documents'> }>) {
+function PlaceholderView({ view }: Readonly<{ view: 'profile' | 'settings' }>) {
   const { title, body } = PLACEHOLDERS[view]
   return (
     <div className="max-w-170">
@@ -47,9 +42,9 @@ export function PatternDashboard() {
     <div className="grid min-h-[calc(100vh-7rem)] grid-cols-[240px_1fr] bg-canvas">
       <DashboardNav active={view} onSelect={setView} />
       <main className="overflow-auto px-10 py-9">
-        {view === 'documents' ? (
-          <MyDocuments />
-        ) : (
+        {view === 'documents' && <MyDocuments />}
+        {view === 'patterns' && <YourPatterns />}
+        {(view === 'profile' || view === 'settings') && (
           <PlaceholderView view={view} />
         )}
       </main>
