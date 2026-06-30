@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import {
   createDocument,
+  DocumentError,
   getDocument,
   submitDocument,
   updateDraft,
@@ -153,5 +154,56 @@ describe('useDocumentSession', () => {
     expect(result.current.title).toBe('Restored role')
     expect(result.current.initialContent).toBe('restored text')
     expect(createDocumentMock).not.toHaveBeenCalled()
+  })
+
+  it('forgets a remembered id that now points to a submitted document', async () => {
+    localStorage.setItem('pm:document:jd', 'doc-sub')
+    getDocumentMock.mockResolvedValue({
+      ...draft({ id: 'doc-sub' }),
+      status: 'submitted' as const,
+    })
+
+    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.documentId).toBeNull()
+    expect(localStorage.getItem('pm:document:jd')).toBeNull()
+  })
+
+  it('forgets a remembered draft that no longer exists', async () => {
+    localStorage.setItem('pm:document:jd', 'gone')
+    getDocumentMock.mockRejectedValue(new DocumentError(404))
+
+    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(localStorage.getItem('pm:document:jd')).toBeNull()
+  })
+
+  it('retries the backing document after a failed create', async () => {
+    createDocumentMock.mockRejectedValueOnce(new Error('boom'))
+    createDocumentMock.mockResolvedValueOnce(draft({ id: 'doc-2' }))
+    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
+
+    act(() => result.current.setContent('first try'))
+    await waitFor(() => expect(createDocumentMock).toHaveBeenCalledTimes(1))
+    // Let the rejected create settle so its catch frees the slot before the retry.
+    await act(async () => {})
+
+    act(() => result.current.setContent('second try'))
+    await waitFor(() => expect(result.current.documentId).toBe('doc-2'))
+  })
+
+  it('starts fresh when localStorage is unavailable', () => {
+    const getItem = vi
+      .spyOn(Storage.prototype, 'getItem')
+      .mockImplementation(() => {
+        throw new Error('blocked')
+      })
+
+    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
+    expect(result.current.isLoading).toBe(false)
+
+    getItem.mockRestore()
   })
 })
