@@ -35,6 +35,14 @@ describe('BarChart', () => {
     expect(screen.getByText('0%')).toBeInTheDocument()
   })
 
+  it('rounds the axis ceiling to whole-number ticks when integerTicks is set', () => {
+    render(<BarChart data={[{ label: 'Jun', value: 4.33 }]} integerTicks />)
+    expect(screen.getByText('8')).toBeInTheDocument()
+    expect(screen.getByText('6')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.queryByText('4.3')).not.toBeInTheDocument()
+  })
+
   it('renders the caption when given', () => {
     render(<BarChart data={DATA} caption="Up since January." />)
     expect(screen.getByText('Up since January.')).toBeInTheDocument()

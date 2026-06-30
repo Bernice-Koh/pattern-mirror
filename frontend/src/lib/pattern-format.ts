@@ -29,6 +29,14 @@ export function periodLabel(period: string): string {
   return MONTH_LABELS[month - 1] ?? period
 }
 
+/** The year, or year range, a set of "YYYY-MM" periods spans — shown once under a month axis. */
+export function yearSpanLabel(periods: string[]): string {
+  const years = periods.map((period) => period.split('-')[0])
+  const first = years[0]
+  const last = years.at(-1) ?? first
+  return first === last ? first : `${first}–${last}`
+}
+
 /** One significant figure is enough for a p-value pill; floor the vanishingly small. */
 export function formatPValue(pValue: number): string {
   if (pValue < 0.0001) return '< 0.0001'

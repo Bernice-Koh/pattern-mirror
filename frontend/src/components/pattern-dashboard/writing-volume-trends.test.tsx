@@ -45,6 +45,7 @@ describe('WritingVolumeTrends', () => {
     expect(screen.getByText('Bias flags over time')).toBeInTheDocument()
     expect(screen.getByText('Jan')).toBeInTheDocument()
     expect(screen.getByText('Jun')).toBeInTheDocument()
+    expect(screen.getByText('2026')).toBeInTheDocument()
     expect(
       screen.getByText(
         'Your average flags per document went from 2.0 in Jan to 0.7 in Jun.',
@@ -61,6 +62,7 @@ describe('WritingVolumeTrends', () => {
     )
 
     expect(screen.getByText('Mar')).toBeInTheDocument()
+    expect(screen.getByText('2026')).toBeInTheDocument()
     expect(
       screen.queryByText(/Your average flags per document went from/),
     ).not.toBeInTheDocument()

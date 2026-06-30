@@ -3,7 +3,7 @@ import type {
   CategoryImprovement,
   FlagVolumePoint,
 } from '@/lib/patterns-contract'
-import { categoryLabel, periodLabel } from '@/lib/pattern-format'
+import { categoryLabel, periodLabel, yearSpanLabel } from '@/lib/pattern-format'
 import { BarChart, type BarDatum } from '@/components/ui/bar-chart'
 
 interface WritingVolumeTrendsProps {
@@ -76,11 +76,16 @@ export function WritingVolumeTrends({
         caption="Average flags per document, over time"
       >
         {flagVolume.length > 0 ? (
-          <BarChart
-            data={volumeBars}
-            formatTick={formatRate}
-            caption={volumeCaption(flagVolume)}
-          />
+          <>
+            <BarChart
+              data={volumeBars}
+              integerTicks
+              caption={volumeCaption(flagVolume)}
+            />
+            <p className="mt-2 text-center font-sans text-meta text-ink-faint">
+              {yearSpanLabel(flagVolume.map((point) => point.period))}
+            </p>
+          </>
         ) : (
           <EmptyState message="Not enough history yet" />
         )}
