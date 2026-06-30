@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
@@ -21,7 +21,6 @@ from pattern_mirror.models.enums import (
     AnalysisRunStatus,
     BiasCategory,
     DocType,
-    FlagInteractionKind,
 )
 from pattern_mirror.models.identity import Subject
 from pattern_mirror.services.behavioural_states import (
@@ -30,6 +29,7 @@ from pattern_mirror.services.behavioural_states import (
     FlagOutcome,
     classify,
 )
+from pattern_mirror.services.flag_outcomes import surfaced_flag_groups
 from pattern_mirror.services.significance import Contingency, fisher_p_value, is_significant
 
 # Writing patterns correlate a term with the subject's gender; age (3+ bands) needs a
@@ -313,59 +313,12 @@ def _submitted_content_by_document(session: Session, owner_id: uuid.UUID) -> dic
     return {doc_id: content for doc_id, content in rows if content is not None}
 
 
-@dataclass(frozen=True)
-class _FlagGroup:
-    """One distinct flagged thing the manager saw: a ``(document, span, fingerprint)`` group."""
-
-    document_id: uuid.UUID
-    category: BiasCategory
-    raw_span: str
-    interaction_kinds: tuple[FlagInteractionKind, ...]
-
-
-def _surfaced_flag_groups(session: Session, document_ids: list[uuid.UUID]) -> list[_FlagGroup]:
-    """Group each document's flags by ``(span, fingerprint)`` and keep the ones the manager saw.
-
-    Flags regenerate every run, so a dismissal recorded on one run's flag and the surviving flag
-    on a later run share a signature; grouping collects the decision wherever it was logged. A group
-    never surfaced (all suppressed, no interaction) is a flag the manager never saw.
-    """
-    flags = session.scalars(
-        select(Flag)
-        .where(Flag.document_id.in_(document_ids))
-        .options(selectinload(Flag.interactions))
-    ).all()
-    by_signature: dict[tuple[uuid.UUID, str, str], list[Flag]] = defaultdict(list)
-    for flag in flags:
-        signature = (flag.document_id, flag.normalised_span, flag.sentence_fingerprint)
-        by_signature[signature].append(flag)
-
-    groups: list[_FlagGroup] = []
-    for (document_id, _, _), group in by_signature.items():
-        interactions = sorted(
-            (event for flag in group for event in flag.interactions),
-            key=lambda event: event.created_at,
-        )
-        surfaced = any(not flag.suppressed for flag in group) or bool(interactions)
-        if not surfaced:
-            continue
-        groups.append(
-            _FlagGroup(
-                document_id=document_id,
-                category=group[0].category,
-                raw_span=group[0].raw_span,
-                interaction_kinds=tuple(event.kind for event in interactions),
-            )
-        )
-    return groups
-
-
 def _classified_flags(
     session: Session, content_by_document: dict[uuid.UUID, str]
 ) -> list[_ClassifiedFlag]:
     """Reduce each surfaced flag on the submitted documents to its behavioural state."""
     classified: list[_ClassifiedFlag] = []
-    for group in _surfaced_flag_groups(session, list(content_by_document)):
+    for group in surfaced_flag_groups(session, list(content_by_document)):
         state = classify(
             FlagOutcome(
                 flagged_text=group.raw_span,
@@ -498,7 +451,7 @@ def aggregate_flag_volume_trend(session: Session, *, owner_id: uuid.UUID) -> lis
         return []
     documents_by_period: Counter[str] = Counter(period_by_document.values())
     flags_by_period: Counter[str] = Counter()
-    for group in _surfaced_flag_groups(session, list(period_by_document)):
+    for group in surfaced_flag_groups(session, list(period_by_document)):
         period = period_by_document.get(group.document_id)
         if period is not None:
             flags_by_period[period] += 1
@@ -539,7 +492,7 @@ def aggregate_category_improvements(
 
     first_flags: Counter[BiasCategory] = Counter()
     last_flags: Counter[BiasCategory] = Counter()
-    for group in _surfaced_flag_groups(session, list(period_by_document)):
+    for group in surfaced_flag_groups(session, list(period_by_document)):
         period = period_by_document.get(group.document_id)
         if period == first:
             first_flags[group.category] += 1
