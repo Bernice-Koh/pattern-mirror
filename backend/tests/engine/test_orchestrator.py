@@ -16,11 +16,13 @@ from structlog.testing import capture_logs
 from pattern_mirror.core.config import Settings
 from pattern_mirror.engine.adjudicator import RejectionReason
 from pattern_mirror.engine.candidate_flag import CandidateFlag
+from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
 from pattern_mirror.engine.orchestrator import (
     EngineNode,
     _adjudicator_node,
+    _build_contextual_node,
     _build_judge_node,
     _build_recommendations_node,
     _build_suppression_node,
@@ -45,6 +47,7 @@ from pattern_mirror.models.enums import (
     AnalysisTrigger,
     BiasCategory,
     DocType,
+    FlagScope,
     FlagSourceStage,
     FlagVerdict,
 )
@@ -81,6 +84,17 @@ def _state(document_text: str) -> EngineState:
         doc_type=DocType.jd,
         region_code="SG",
     )
+
+
+class _FakeContextualClient:
+    """Deterministic stand-in for the Contextual Pass client: fixed flags, recorded usage."""
+
+    def __init__(self, result: ContextualPassResult) -> None:
+        self._result = result
+        self._completion = SimpleNamespace(usage=SimpleNamespace(input_tokens=80, output_tokens=20))
+
+    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+        return self._result, self._completion
 
 
 def test_adjudicator_node_keeps_verbatim_flags_and_logs_rejections() -> None:
@@ -290,6 +304,53 @@ def _settings(threshold: float = 0.7) -> Settings:
 
 
 @pytest.mark.db
+def test_contextual_node_drops_and_logs_a_flag_with_no_citation_floor(
+    db_session: Session,
+) -> None:
+    user = User(
+        external_user_id=f"contextual-{uuid.uuid4()}",
+        legal_name="Contextual Manager",
+        email=f"{uuid.uuid4()}@example.test",
+    )
+    db_session.add(user)
+    db_session.flush()
+    document = Document(
+        owner_id=user.id, doc_type=DocType.jd, content="We want a strong culture fit."
+    )
+    db_session.add(document)
+    db_session.flush()
+    run = AnalysisRun(
+        document_id=document.id, trigger=AnalysisTrigger.typing_pause, content_hash="0" * 64
+    )
+    db_session.add(run)
+    db_session.flush()
+
+    state = _state(document.content)
+    state["document_id"] = document.id
+    state["analysis_run_id"] = run.id
+    state["region_code"] = "ZZ"  # no lexicon, so the new flag has no citation floor and is dropped
+    client = _FakeContextualClient(
+        ContextualPassResult(
+            new_flags=[
+                ContextualFlag(
+                    raw_span="culture fit",
+                    category=BiasCategory.race,
+                    scope=FlagScope.role_specific,
+                    verdict=FlagVerdict.unacceptable,
+                    explanation="Vague 'fit' invites in-group bias.",
+                )
+            ]
+        )
+    )
+    node = _build_contextual_node(db_session, client, "claude-sonnet-4-6")
+
+    with capture_logs() as logs:
+        update = node(state)
+
+    assert update["candidate_flags"] == []
+    assert any(log["event"] == "engine.contextual_uncited_dropped" for log in logs)
+
+
 def test_judge_node_scores_contextual_gates_below_threshold_and_passes_dictionary(
     db_session: Session,
 ) -> None:
