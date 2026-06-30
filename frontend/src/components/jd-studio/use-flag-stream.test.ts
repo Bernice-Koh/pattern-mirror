@@ -173,6 +173,50 @@ describe('useFlagStream', () => {
     expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-2'])
   })
 
+  it('keeps the prior run’s flags painted while a re-run is still in flight', async () => {
+    streamEvents = [flagEvent('ctx-1', 'contextual')]
+    const { result, rerender } = renderHook(
+      ({ t }) => useFlagStream('doc-1', t),
+      {
+        initialProps: { t: '' },
+      },
+    )
+
+    act(() => rerender({ t: 'first' }))
+    await idle()
+    expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-1'])
+
+    // The re-run (as an accepted-flag edit would trigger) opens but yields nothing yet.
+    keepOpen = true
+    streamEvents = []
+    act(() => rerender({ t: 'second' }))
+    await idle()
+
+    expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-1'])
+  })
+
+  it('clears the prior run’s flags when a completed run finds none', async () => {
+    streamEvents = [flagEvent('ctx-1', 'contextual')]
+    const { result, rerender } = renderHook(
+      ({ t }) => useFlagStream('doc-1', t),
+      {
+        initialProps: { t: '' },
+      },
+    )
+
+    act(() => rerender({ t: 'first' }))
+    await idle()
+    expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-1'])
+
+    streamEvents = [
+      { type: 'done', analysis_run_id: 'r', status: 'complete', flag_count: 0 },
+    ]
+    act(() => rerender({ t: 'second' }))
+    await idle()
+
+    expect(result.current.contextualFlags).toEqual([])
+  })
+
   it('re-check runs the recheck stream into the same contextual accumulator', async () => {
     recheckEvents = [
       flagEvent('dict-1', 'dictionary'),
