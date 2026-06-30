@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
+import { useSearch } from '@tanstack/react-router'
 import {
   CATEGORY_LABELS,
   formatCitation,
@@ -25,7 +26,9 @@ const SUBMIT_LABELS = {
 } as const
 
 export function JdStudio() {
-  const session = useDocumentSession('jd')
+  // A document opened from My Documents (#69) arrives as ?doc=<id>; absent for a fresh draft.
+  const { doc } = useSearch({ strict: false })
+  const session = useDocumentSession('jd', doc)
   const [flags, setFlags] = useState<CitedFlag[]>([])
   const editorRef = useRef<JdEditorHandle>(null)
   const { resolutions, accept, dismiss, undo } = useFlagInteractions()
@@ -71,7 +74,8 @@ export function JdStudio() {
     return <main className="h-[calc(100vh-7rem)] bg-surface" />
   }
 
-  const submitted = session.submitState === 'submitted'
+  const readOnly = session.isReadOnly
+  const submitted = session.submitState === 'submitted' || readOnly
 
   return (
     <main className="flex h-[calc(100vh-7rem)] flex-col bg-surface">
@@ -94,6 +98,7 @@ export function JdStudio() {
             <JdEditor
               ref={editorRef}
               documentId={session.documentId}
+              editable={!readOnly}
               initialContent={session.initialContent}
               onTextChange={session.setContent}
               onFlagsChange={setFlags}
@@ -149,7 +154,7 @@ export function JdStudio() {
               submitted
             }
           >
-            {SUBMIT_LABELS[session.submitState]}
+            {readOnly ? 'Published' : SUBMIT_LABELS[session.submitState]}
           </Button>
         </div>
       </footer>

@@ -5,6 +5,12 @@ import type { ReactNode } from 'react'
 import { recordInteraction } from '@/lib/interaction-client'
 import { JdStudio } from './jd-studio'
 
+// This suite renders JdStudio outside a router; it exercises flag interactions, not the
+// document-open search param (#69), so the search reads as empty.
+vi.mock('@tanstack/react-router', () => ({
+  useSearch: () => ({}),
+}))
+
 const FLAG = vi.hoisted(() => ({
   id: 'f1',
   source_stage: 'contextual' as const,

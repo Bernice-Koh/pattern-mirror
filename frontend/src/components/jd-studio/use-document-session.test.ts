@@ -104,6 +104,41 @@ describe('useDocumentSession', () => {
     })
   })
 
+  it('opens a draft by id without creating a new document', async () => {
+    getDocumentMock.mockResolvedValue(
+      draft({ id: 'doc-42', title: 'Opened', content: 'opened text' }),
+    )
+
+    const { result } = renderHook(() => useDocumentSession('jd', 'doc-42'), {
+      wrapper,
+    })
+    expect(result.current.isLoading).toBe(true)
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(getDocumentMock).toHaveBeenCalledWith('doc-42')
+    expect(result.current.documentId).toBe('doc-42')
+    expect(result.current.initialContent).toBe('opened text')
+    expect(result.current.isReadOnly).toBe(false)
+    expect(createDocumentMock).not.toHaveBeenCalled()
+  })
+
+  it('opens a submitted document read-only and never submits it', async () => {
+    getDocumentMock.mockResolvedValue({
+      ...draft({ id: 'doc-7', content: 'final text' }),
+      status: 'submitted' as const,
+    })
+
+    const { result } = renderHook(() => useDocumentSession('jd', 'doc-7'), {
+      wrapper,
+    })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(result.current.isReadOnly).toBe(true)
+
+    act(() => result.current.submit())
+    expect(submitDocumentMock).not.toHaveBeenCalled()
+  })
+
   it('restores a remembered draft on load', async () => {
     localStorage.setItem('pm:document:jd', 'doc-9')
     getDocumentMock.mockResolvedValue(

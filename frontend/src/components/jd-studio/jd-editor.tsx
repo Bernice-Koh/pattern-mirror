@@ -61,6 +61,9 @@ interface HoverState {
 export interface JdEditorProps {
   /** The backing document, created on first edit; null suspends Layer 1 and Layer 2 until then. */
   documentId: string | null
+  /** False opens the saved text read-only (a submitted document from My Documents): no editing,
+   *  no analysis, no re-check. Defaults to true. */
+  editable?: boolean
   initialContent: string
   /** Report the editor's text up so the session can autosave and submit it. */
   onTextChange?: (text: string) => void
@@ -89,6 +92,7 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
   function JdEditor(
     {
       documentId,
+      editable = true,
       initialContent,
       onTextChange,
       onFlagsChange,
@@ -103,7 +107,11 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
     const flagsById = useRef<Map<string, CitedFlag>>(new Map())
     const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+    // Read-only suspends both analysis layers: a submitted document is shown as saved, not re-run.
+    const activeDocumentId = editable ? documentId : null
+
     const editor = useEditor({
+      editable,
       extensions: [StarterKit, FlagDecorations],
       content: initialContent,
       editorProps: {
@@ -116,23 +124,23 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
     const debouncedText = useDebouncedValue(text, ANALYZE_DEBOUNCE_MS)
 
     const { data } = useQuery({
-      queryKey: ['analyze', documentId, debouncedText],
+      queryKey: ['analyze', activeDocumentId, debouncedText],
       queryFn: ({ signal }) => {
         // enabled gates this on a non-null documentId; the guard narrows the type.
-        if (!documentId) throw new Error('analyze requires a document')
+        if (!activeDocumentId) throw new Error('analyze requires a document')
         return analyzeDocument(
-          { document_id: documentId, content: debouncedText },
+          { document_id: activeDocumentId, content: debouncedText },
           signal,
         )
       },
-      enabled: !!documentId && debouncedText.length > 0,
+      enabled: !!activeDocumentId && debouncedText.length > 0,
       placeholderData: keepPreviousData,
     })
 
     // Layer 2 streams its contextual flags off the session's document; a re-check re-runs
     // that same stream on demand into the same accumulator.
     const { contextualFlags, recheck, isRechecking } = useFlagStream(
-      documentId,
+      activeDocumentId,
       text,
     )
 
@@ -235,17 +243,19 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
         onMouseLeave={scheduleClose}
         onBlur={scheduleClose}
       >
-        <div className="mb-2 flex justify-end">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={recheck}
-            disabled={!documentId || isRechecking}
-          >
-            <RecheckIcon />
-            {isRechecking ? 'Re-checking…' : 'Re-check'}
-          </Button>
-        </div>
+        {editable && (
+          <div className="mb-2 flex justify-end">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={recheck}
+              disabled={!documentId || isRechecking}
+            >
+              <RecheckIcon />
+              {isRechecking ? 'Re-checking…' : 'Re-check'}
+            </Button>
+          </div>
+        )}
         <EditorContent editor={editor} />
         {hover && (
           <FlagPopover
