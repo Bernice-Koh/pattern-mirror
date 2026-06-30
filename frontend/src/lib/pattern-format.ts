@@ -1,11 +1,40 @@
-/** Shared presentation formatters for the Pattern Dashboard's pattern statements (#67, #68). */
+/** Shared presentation formatters for the Pattern Dashboard's pattern statements (#67, #68, #99). */
 
 import type { BiasCategory } from '@/lib/patterns-contract'
+
+const MONTH_LABELS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+]
 
 /** Title-case a category enum value: `family_status` → "Family status". */
 export function categoryLabel(category: BiasCategory): string {
   const spaced = category.replaceAll('_', ' ')
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+/** "2026-03" → "Mar"; the raw period is the fallback for an unexpected shape. */
+export function periodLabel(period: string): string {
+  const month = Number(period.split('-')[1])
+  return MONTH_LABELS[month - 1] ?? period
+}
+
+/** The year, or year range, a set of "YYYY-MM" periods spans — shown once under a month axis. */
+export function yearSpanLabel(periods: string[]): string {
+  const years = periods.map((period) => period.split('-')[0])
+  const first = years[0]
+  const last = years.at(-1) ?? first
+  return first === last ? first : `${first}–${last}`
 }
 
 /** One significant figure is enough for a p-value pill; floor the vanishingly small. */

@@ -14,6 +14,8 @@ export interface BarChartProps extends HTMLAttributes<HTMLDivElement> {
   max?: number
   /** Format an axis tick value, e.g. `(v) => `${v}%``. Defaults to the rounded integer. */
   formatTick?: (value: number) => string
+  /** Round the axis ceiling up so every tick is a whole number. @default false */
+  integerTicks?: boolean
   /** Tailwind background class for the bars. @default "bg-red-primary" */
   barClassName?: string
 }
@@ -27,11 +29,16 @@ export function BarChart({
   caption,
   max,
   formatTick = (value) => `${Math.round(value)}`,
+  integerTicks = false,
   barClassName = 'bg-red-primary',
   className,
   ...props
 }: Readonly<BarChartProps>) {
-  const ceiling = Math.max(1, max ?? 0, ...data.map((datum) => datum.value))
+  const rawCeiling = Math.max(1, max ?? 0, ...data.map((datum) => datum.value))
+  // Round up to a multiple of the interval count so every tick lands on a whole number.
+  const ceiling = integerTicks
+    ? Math.ceil(rawCeiling / TICK_INTERVALS) * TICK_INTERVALS
+    : rawCeiling
   // Tick values from the ceiling down to zero, so they read top-to-bottom against the gridlines.
   const ticks = Array.from(
     { length: TICK_INTERVALS + 1 },

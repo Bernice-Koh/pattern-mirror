@@ -4,6 +4,7 @@ import type { WritingPattern } from '@/lib/patterns-contract'
 import { getPatterns } from '@/lib/patterns-client'
 import { PatternCard } from '@/components/pattern-dashboard/pattern-card'
 import { PatternOverviewStub } from '@/components/pattern-dashboard/pattern-overview-stub'
+import { WritingVolumeTrends } from '@/components/pattern-dashboard/writing-volume-trends'
 import { BehaviouralReflection } from '@/components/pattern-dashboard/behavioural-reflection'
 
 const ACROSS_TIME_TITLE = 'Across your history'
@@ -71,8 +72,8 @@ export function YourPatterns() {
   } else if (writingPatterns.length === 0) {
     recurring = (
       <p className="rounded-card bg-surface p-5 font-sans text-body-sm text-ink-muted shadow-ring-card">
-        No writing patterns have cleared significance testing yet. Patterns
-        appear here only once they are unlikely to be coincidence.
+        No clear patterns have emerged yet. Patterns appear here only once they
+        are unlikely to be a coincidence.
       </p>
     )
   } else {
@@ -92,10 +93,17 @@ export function YourPatterns() {
       </h1>
       <p className="mt-2.5 mb-7 max-w-165 font-sans text-body leading-relaxed text-ink-muted">
         How your writing and decisions have changed over time. Only patterns
-        that pass Fisher&apos;s exact significance testing appear here.
+        unlikely to be a coincidence appear here.
       </p>
 
       <PatternOverviewStub />
+
+      {!isLoading && (
+        <WritingVolumeTrends
+          flagVolume={data?.flag_volume_trend ?? []}
+          improvements={data?.category_improvements ?? []}
+        />
+      )}
 
       <h2 className="mb-3.5 font-sans text-body-sm font-semibold text-ink-muted">
         Still recurring
@@ -110,8 +118,8 @@ export function YourPatterns() {
       )}
 
       <p className="mt-2 border-t border-border pt-4 font-sans text-meta text-ink-faint">
-        Only patterns that pass Fisher&apos;s exact significance testing appear
-        here. This is your own data — visible only to you.
+        Only patterns unlikely to be a coincidence appear here. This is your own
+        data — visible only to you.
       </p>
     </div>
   )

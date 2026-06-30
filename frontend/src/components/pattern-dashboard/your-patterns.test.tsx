@@ -32,6 +32,8 @@ function report(
     writing_patterns: writing,
     decision_patterns: decision,
     adoption_trend: [],
+    flag_volume_trend: [],
+    category_improvements: [],
   }
 }
 
@@ -116,7 +118,7 @@ describe('YourPatterns', () => {
     render(<YourPatterns />, { wrapper })
 
     expect(
-      await screen.findByText(/No writing patterns have cleared/),
+      await screen.findByText(/No clear patterns have emerged/),
     ).toBeInTheDocument()
   })
 

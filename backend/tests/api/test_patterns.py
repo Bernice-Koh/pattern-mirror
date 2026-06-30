@@ -210,6 +210,65 @@ def test_returns_the_adoption_trend(
     ]
 
 
+def test_returns_the_flag_volume_trend(
+    patterns_client: TestClient, db_session: Session, owner: User
+) -> None:
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.gender,
+        span="sharp",
+        kind=FlagInteractionKind.accept,
+        present_in_final=False,
+        submitted_at=datetime(2026, 3, 1, tzinfo=UTC),
+    )
+
+    response = patterns_client.get("/patterns")
+
+    assert response.status_code == 200
+    assert response.json()["flag_volume_trend"] == [
+        {"period": "2026-03", "document_count": 1, "flag_count": 1, "flags_per_document": 1.0}
+    ]
+
+
+def test_returns_category_improvements(
+    patterns_client: TestClient, db_session: Session, owner: User
+) -> None:
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.gender,
+        span="sharp",
+        kind=FlagInteractionKind.accept,
+        present_in_final=False,
+        submitted_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    # A later month with no gender flag: gender falls to zero, age is a regression and is withheld.
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.age,
+        span="young",
+        kind=FlagInteractionKind.accept,
+        present_in_final=False,
+        submitted_at=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+
+    response = patterns_client.get("/patterns")
+
+    assert response.status_code == 200
+    assert response.json()["category_improvements"] == [
+        {
+            "category": "gender",
+            "first_period": "2026-01",
+            "last_period": "2026-06",
+            "first_rate": 1.0,
+            "last_rate": 0.0,
+            "reduction": 1.0,
+        }
+    ]
+
+
 def test_empty_history_returns_empty_families(patterns_client: TestClient) -> None:
     response = patterns_client.get("/patterns")
 
@@ -218,6 +277,8 @@ def test_empty_history_returns_empty_families(patterns_client: TestClient) -> No
         "writing_patterns": [],
         "decision_patterns": [],
         "adoption_trend": [],
+        "flag_volume_trend": [],
+        "category_improvements": [],
     }
 
 

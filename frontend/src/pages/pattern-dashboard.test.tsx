@@ -27,6 +27,8 @@ vi.mock('@/lib/patterns-client', () => ({
     writing_patterns: [],
     decision_patterns: [],
     adoption_trend: [],
+    flag_volume_trend: [],
+    category_improvements: [],
   }),
 }))
 
