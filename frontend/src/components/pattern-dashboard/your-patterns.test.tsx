@@ -32,6 +32,8 @@ function report(
     writing_patterns: writing,
     decision_patterns: decision,
     adoption_trend: [],
+    flag_volume_trend: [],
+    category_improvements: [],
   }
 }
 

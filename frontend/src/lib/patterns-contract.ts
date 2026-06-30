@@ -46,8 +46,28 @@ export interface AdoptionTrendPoint {
   adoption_rate: number
 }
 
+/** Average flags raised per submitted document within one calendar month (#99). */
+export interface FlagVolumePoint {
+  period: string
+  document_count: number
+  flag_count: number
+  flags_per_document: number
+}
+
+/** A bias category whose flags-per-document fell from the first period to the latest (#99). */
+export interface CategoryImprovement {
+  category: BiasCategory
+  first_period: string
+  last_period: string
+  first_rate: number
+  last_rate: number
+  reduction: number
+}
+
 export interface PatternReport {
   writing_patterns: WritingPattern[]
   decision_patterns: DecisionPattern[]
   adoption_trend: AdoptionTrendPoint[]
+  flag_volume_trend: FlagVolumePoint[]
+  category_improvements: CategoryImprovement[]
 }
