@@ -156,7 +156,7 @@ describe('JdEditor', () => {
       <JdEditor
         documentId={null}
         initialContent=""
-        dismissedFlagIds={new Set(['f1'])}
+        resolvedFlagIds={new Set(['f1'])}
       />,
       { wrapper },
     )
@@ -171,7 +171,7 @@ describe('JdEditor', () => {
       <JdEditor
         documentId={null}
         initialContent=""
-        dismissedFlagIds={new Set(['f1'])}
+        resolvedFlagIds={new Set(['f1'])}
       />,
       { wrapper },
     )
