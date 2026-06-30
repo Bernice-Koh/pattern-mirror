@@ -103,6 +103,13 @@ class AgentName(StrEnum):
     citation = auto()
 
 
+class DictionaryAdditionStatus(StrEnum):
+    pending = auto()
+    approved = auto()
+    rejected = auto()
+    deferred = auto()
+
+
 def _pg_enum(python_enum: type[StrEnum], name: str) -> SAEnum:
     """Build a native PG enum column type whose values are the enum's string values."""
     return SAEnum(
@@ -126,3 +133,4 @@ flag_scope_enum = _pg_enum(FlagScope, "flag_scope")
 flag_verdict_enum = _pg_enum(FlagVerdict, "flag_verdict")
 flag_interaction_kind_enum = _pg_enum(FlagInteractionKind, "flag_interaction_kind")
 agent_name_enum = _pg_enum(AgentName, "agent_name")
+dictionary_addition_status_enum = _pg_enum(DictionaryAdditionStatus, "dictionary_addition_status")

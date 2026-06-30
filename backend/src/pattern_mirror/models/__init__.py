@@ -11,6 +11,7 @@ from pattern_mirror.models.calibration import CalibrationRun
 from pattern_mirror.models.dictionary import Dictionary
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag, FlagDismissal
+from pattern_mirror.models.growth import DictionaryProposal, PendingDictionaryAddition
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 from pattern_mirror.models.reference import Citation, Region
 
@@ -20,9 +21,11 @@ __all__ = [
     "CalibrationRun",
     "Citation",
     "Dictionary",
+    "DictionaryProposal",
     "Document",
     "Flag",
     "FlagDismissal",
+    "PendingDictionaryAddition",
     "Region",
     "Subject",
     "User",

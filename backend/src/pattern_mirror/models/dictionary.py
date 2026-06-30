@@ -2,9 +2,8 @@
 
 Region-scoped (the orchestrator selects ``WHERE region_code = :region AND active``)
 and every live entry carries a citation, enforcing the "every flag cites a
-verifiable source" value prop. ``origin_candidate_id`` (provenance for grown
-entries) is intentionally absent here: it arrives in migration 0005 with the
-``dictionary_candidates`` table it references.
+verifiable source" value prop. ``source_proposal_id`` and ``last_updated_by``
+carry provenance for grown entries; both are null on the seeded SG/TAFEP rows.
 """
 
 import uuid
@@ -20,6 +19,7 @@ from pattern_mirror.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
     from pattern_mirror.models.engine import Flag, FlagDismissal
+    from pattern_mirror.models.growth import DictionaryProposal
     from pattern_mirror.models.reference import Citation, Region
 
 
@@ -45,8 +45,13 @@ class Dictionary(TimestampMixin, Base):
     citation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("citations.id"))
     explanation: Mapped[str] = mapped_column(Text)
     active: Mapped[bool] = mapped_column(server_default=text("true"))
+    last_updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    source_proposal_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("dictionary_proposals.id")
+    )
 
     region: Mapped["Region"] = relationship(back_populates="dictionaries")
     citation: Mapped["Citation"] = relationship(back_populates="dictionaries")
     flags: Mapped[list["Flag"]] = relationship(back_populates="dictionary_entry")
     dismissals: Mapped[list["FlagDismissal"]] = relationship(back_populates="rule")
+    source_proposal: Mapped["DictionaryProposal | None"] = relationship()

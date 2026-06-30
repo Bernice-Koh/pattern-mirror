@@ -1,11 +1,9 @@
 """Tier-2 audit backbone: ``agent_runs``.
 
 One generic table logs every agent invocation's structured I/O, beating seven
-agent-specific tables. Nullable FKs attach a run to whatever it concerned (a
-document/flag for the engine agents). Cost and latency live here too, doubling
-as input to the model eval. ``candidate_id`` (for the dictionary-growth agents)
-is intentionally absent: it arrives in migration 0005 with the
-``dictionary_candidates`` table it references.
+agent-specific tables. Nullable FKs attach a run to whatever it concerned: a
+document/flag for the engine agents, a ``dictionary_proposals`` row for the four
+growth agents. Cost and latency live here too, doubling as input to the model eval.
 """
 
 import uuid
@@ -24,6 +22,7 @@ from pattern_mirror.models.mixins import CreatedAtMixin
 if TYPE_CHECKING:
     from pattern_mirror.models.documents import AnalysisRun, Document
     from pattern_mirror.models.engine import Flag
+    from pattern_mirror.models.growth import DictionaryProposal
 
 
 class AgentRun(CreatedAtMixin, Base):
@@ -37,6 +36,9 @@ class AgentRun(CreatedAtMixin, Base):
     document_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("documents.id"), index=True)
     flag_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("flags.id"), index=True)
     analysis_run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("analysis_runs.id"))
+    proposal_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("dictionary_proposals.id"), index=True
+    )
     input: Mapped[dict[str, Any]] = mapped_column(JSONB)
     output: Mapped[dict[str, Any]] = mapped_column(JSONB)
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)
@@ -47,3 +49,4 @@ class AgentRun(CreatedAtMixin, Base):
     document: Mapped["Document | None"] = relationship()
     flag: Mapped["Flag | None"] = relationship()
     analysis_run: Mapped["AnalysisRun | None"] = relationship()
+    proposal: Mapped["DictionaryProposal | None"] = relationship()
