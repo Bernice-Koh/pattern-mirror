@@ -22,6 +22,12 @@ vi.mock('@/lib/documents-client', () => ({
   listDocuments: vi.fn().mockResolvedValue([]),
 }))
 
+vi.mock('@/lib/patterns-client', () => ({
+  getPatterns: vi
+    .fn()
+    .mockResolvedValue({ writing_patterns: [], decision_patterns: [] }),
+}))
+
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
 }))
@@ -43,7 +49,7 @@ describe('PatternDashboard', () => {
     ).toBeInTheDocument()
   })
 
-  it('switches to a placeholder sub-view from the rail', () => {
+  it('switches to the Your patterns view from the rail', () => {
     render(<PatternDashboard />, { wrapper })
 
     fireEvent.click(screen.getByRole('button', { name: 'Your patterns' }))
