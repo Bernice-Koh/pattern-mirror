@@ -1,6 +1,14 @@
-/** Shared presentation formatters for the Pattern Dashboard's pattern statements (#67, #68, #99). */
+/** Shared presentation formatters for the Pattern Dashboard's pattern statements (#67, #68, #99)
+ *  and the HR Portal's trend dashboards (#71). */
 
+import type { DocType } from '@/lib/analyze-contract'
 import type { BiasCategory } from '@/lib/patterns-contract'
+
+const DOC_TYPE_LABELS: Record<DocType, string> = {
+  jd: 'Job descriptions',
+  feedback: 'Interview feedback',
+  promotion: 'Promotion writeups',
+}
 
 const MONTH_LABELS = [
   'Jan',
@@ -21,6 +29,11 @@ const MONTH_LABELS = [
 export function categoryLabel(category: BiasCategory): string {
   const spaced = category.replaceAll('_', ' ')
   return spaced.charAt(0).toUpperCase() + spaced.slice(1)
+}
+
+/** A document type's plural, human-facing label: `feedback` → "Interview feedback". */
+export function docTypeLabel(docType: DocType): string {
+  return DOC_TYPE_LABELS[docType]
 }
 
 /** "2026-03" → "Mar"; the raw period is the fallback for an unexpected shape. */
