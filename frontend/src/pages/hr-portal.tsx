@@ -46,7 +46,7 @@ export function HrPortal() {
         <h1 className="font-serif text-display font-bold text-ink">
           Is it working?
         </h1>
-        <p className="mt-2.5 mb-7 max-w-165 font-sans text-body leading-relaxed text-ink-muted">
+        <p className="mt-2.5 mb-7 font-sans text-body leading-relaxed text-ink-muted">
           Firm-level impact and dictionary health. No individual manager or
           candidate writing appears here.
         </p>

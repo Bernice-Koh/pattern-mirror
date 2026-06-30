@@ -75,12 +75,12 @@ export function HrHeadline({ report }: Readonly<HrHeadlineProps>) {
               PENDING
             )
           }
-          delta="across the firm since rollout"
+          delta="firm-wide this year"
         />
         <StatCard
           label="Flagged language revised"
           value={adoption !== null ? percent(adoption) : PENDING}
-          delta="before submission"
+          delta="before submission this year"
         />
         <StatCard
           label="Recurring habits resolved"
@@ -90,7 +90,7 @@ export function HrHeadline({ report }: Readonly<HrHeadlineProps>) {
         <StatCard
           label="Documents checked"
           value={PENDING}
-          delta="this quarter"
+          delta="firm-wide this year"
         />
       </div>
 

@@ -3,8 +3,10 @@ import type { ReactNode } from 'react'
 /** Neutral placeholder shown in place of a chart when a dimension has no data yet. */
 export function ReportEmptyState({ message }: Readonly<{ message: string }>) {
   return (
-    <div className="flex h-42 items-center justify-center rounded-md border border-dashed border-border">
-      <span className="font-sans text-body-sm text-ink-faint">{message}</span>
+    <div className="flex h-42 items-center justify-center rounded-md border border-dashed border-border px-6">
+      <span className="max-w-xs text-center font-sans text-body-sm text-ink-faint">
+        {message}
+      </span>
     </div>
   )
 }
