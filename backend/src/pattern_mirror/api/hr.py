@@ -183,8 +183,6 @@ def get_calibration(
 
 
 @router.get("/dictionary-health", summary="Dictionary growth health (HR)")
-def get_dictionary_health(
-    session: Annotated[Session, Depends(get_session)],
-) -> DictionaryHealthResponse:
+def get_dictionary_health() -> DictionaryHealthResponse:
     """Dictionary-health metrics; an empty state until Dictionary Growth (#8) lands."""
-    return _serialise_dictionary_health(dictionary_health_report(session))
+    return _serialise_dictionary_health(dictionary_health_report())

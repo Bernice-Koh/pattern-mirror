@@ -191,7 +191,7 @@ def test_calibration_includes_the_persisted_gold_set_trend(db_session: Session) 
 def test_empty_database_returns_empty_reports(db_session: Session) -> None:
     effectiveness = effectiveness_report(db_session, min_cell_size=3)
     calibration = calibration_report(db_session, min_cell_size=3)
-    health = dictionary_health_report(db_session)
+    health = dictionary_health_report()
 
     assert effectiveness == effectiveness_report(db_session, min_cell_size=3)
     assert effectiveness.adoption_over_time == ()

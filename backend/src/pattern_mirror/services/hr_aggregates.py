@@ -256,7 +256,7 @@ def calibration_report(session: Session, *, min_cell_size: int) -> CalibrationRe
     )
 
 
-def dictionary_health_report(session: Session) -> DictionaryHealthReport:
+def dictionary_health_report() -> DictionaryHealthReport:
     """The dictionary-health dimension. Empty until Dictionary Growth (#8) provides the data."""
     return DictionaryHealthReport(
         proposal_volume=None,
