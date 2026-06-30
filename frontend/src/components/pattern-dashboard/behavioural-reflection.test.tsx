@@ -126,6 +126,7 @@ describe('BehaviouralReflection', () => {
     )
 
     expect(screen.getByText('Mar')).toBeInTheDocument()
+    expect(screen.getByText('100%')).toBeInTheDocument() // y-axis top tick
     expect(
       screen.queryByText(/Your adoption rate went from/),
     ).not.toBeInTheDocument()

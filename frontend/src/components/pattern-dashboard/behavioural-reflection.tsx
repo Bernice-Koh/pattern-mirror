@@ -39,7 +39,7 @@ function percent(rate: number): string {
 function trendCaption(trend: AdoptionTrendPoint[]): string | undefined {
   if (trend.length < 2) return undefined
   const first = trend[0]
-  const last = trend[trend.length - 1]
+  const last = trend.at(-1) ?? first
   return `Your adoption rate went from ${percent(first.adoption_rate)} in ${periodLabel(
     first.period,
   )} to ${percent(last.adoption_rate)} in ${periodLabel(last.period)}.`
@@ -78,6 +78,7 @@ export function BehaviouralReflection({
           <BarChart
             data={bars}
             max={100}
+            formatTick={(value) => `${value}%`}
             barClassName="bg-green-positive"
             caption={trendCaption(trend)}
           />

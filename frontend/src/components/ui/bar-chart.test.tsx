@@ -28,6 +28,13 @@ describe('BarChart', () => {
     expect(bars[1]).toHaveStyle({ '--bar-height': '50%' })
   })
 
+  it('renders y-axis ticks formatted by formatTick', () => {
+    render(<BarChart data={DATA} max={100} formatTick={(v) => `${v}%`} />)
+    expect(screen.getByText('100%')).toBeInTheDocument()
+    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(screen.getByText('0%')).toBeInTheDocument()
+  })
+
   it('renders the caption when given', () => {
     render(<BarChart data={DATA} caption="Up since January." />)
     expect(screen.getByText('Up since January.')).toBeInTheDocument()
