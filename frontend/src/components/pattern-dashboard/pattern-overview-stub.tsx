@@ -1,7 +1,7 @@
-/** Layout scaffold for the overview sections of the Pattern Dashboard (design spec §2 View 3):
- *  headline stats, AI summary, the bias-flags trend, and per-category improvement. These render
- *  as pending placeholders — no data is fabricated. The behavioural reflection layer is live in its
- *  own section (#68); these writing-volume trends fill in with #99. */
+/** Layout scaffold for the still-static overview sections of the Pattern Dashboard (design spec
+ *  §2 View 3): headline stat cards and the AI summary. These render as pending placeholders — no
+ *  data is fabricated. The writing-volume trends below them are live (#99); the behavioural
+ *  reflection layer is live in its own section (#68). */
 
 const STAT_LABELS = [
   'Bias flags vs your first sessions',
@@ -21,27 +21,7 @@ function StatCardStub({ label }: Readonly<{ label: string }>) {
   )
 }
 
-function PanelStub({
-  title,
-  caption,
-  pending,
-}: Readonly<{ title: string; caption: string; pending: string }>) {
-  return (
-    <div className="rounded-card bg-surface p-6 shadow-ring-card">
-      <h3 className="font-sans text-subheading font-semibold text-ink">
-        {title}
-      </h3>
-      <p className="mt-0.5 mb-4 font-sans text-label text-ink-faint">
-        {caption}
-      </p>
-      <div className="flex h-42 items-center justify-center rounded-md border border-dashed border-border">
-        <span className="font-sans text-body-sm text-ink-faint">{pending}</span>
-      </div>
-    </div>
-  )
-}
-
-/** The non-live overview sections, rendered above the live writing-pattern cards. */
+/** The non-live overview sections, rendered above the live trends and writing-pattern cards. */
 export function PatternOverviewStub() {
   return (
     <>
@@ -59,19 +39,6 @@ export function PatternOverviewStub() {
           A plain-language summary of your patterns will appear here as your
           history grows.
         </p>
-      </div>
-
-      <div className="mb-7 grid grid-cols-[1.2fr_1fr] gap-5.5">
-        <PanelStub
-          title="Bias flags over time"
-          caption="Average flags per document, over time"
-          pending="Not enough history yet"
-        />
-        <PanelStub
-          title="Where you've improved"
-          caption="Reduction in flagged language, by category"
-          pending="No category trends yet"
-        />
       </div>
     </>
   )

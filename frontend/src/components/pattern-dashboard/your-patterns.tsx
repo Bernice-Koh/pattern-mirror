@@ -4,6 +4,7 @@ import type { WritingPattern } from '@/lib/patterns-contract'
 import { getPatterns } from '@/lib/patterns-client'
 import { PatternCard } from '@/components/pattern-dashboard/pattern-card'
 import { PatternOverviewStub } from '@/components/pattern-dashboard/pattern-overview-stub'
+import { WritingVolumeTrends } from '@/components/pattern-dashboard/writing-volume-trends'
 import { BehaviouralReflection } from '@/components/pattern-dashboard/behavioural-reflection'
 
 const ACROSS_TIME_TITLE = 'Across your history'
@@ -96,6 +97,13 @@ export function YourPatterns() {
       </p>
 
       <PatternOverviewStub />
+
+      {!isLoading && (
+        <WritingVolumeTrends
+          flagVolume={data?.flag_volume_trend ?? []}
+          improvements={data?.category_improvements ?? []}
+        />
+      )}
 
       <h2 className="mb-3.5 font-sans text-body-sm font-semibold text-ink-muted">
         Still recurring
