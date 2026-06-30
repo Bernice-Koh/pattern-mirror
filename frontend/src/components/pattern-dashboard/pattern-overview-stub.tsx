@@ -1,7 +1,7 @@
 /** Layout scaffold for the overview sections of the Pattern Dashboard (design spec §2 View 3):
  *  headline stats, AI summary, the bias-flags trend, and per-category improvement. These render
- *  as pending placeholders — no data is fabricated. The behavioural stats are wired in #68 and
- *  the trend charts with the HR-portal work; this only reserves their place in the layout. */
+ *  as pending placeholders — no data is fabricated. The behavioural reflection layer is live in its
+ *  own section (#68); these writing-volume trends fill in with the HR-portal work. */
 
 const STAT_LABELS = [
   'Bias flags vs your first sessions',

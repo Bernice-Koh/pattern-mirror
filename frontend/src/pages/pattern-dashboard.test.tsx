@@ -23,9 +23,11 @@ vi.mock('@/lib/documents-client', () => ({
 }))
 
 vi.mock('@/lib/patterns-client', () => ({
-  getPatterns: vi
-    .fn()
-    .mockResolvedValue({ writing_patterns: [], decision_patterns: [] }),
+  getPatterns: vi.fn().mockResolvedValue({
+    writing_patterns: [],
+    decision_patterns: [],
+    adoption_trend: [],
+  }),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
