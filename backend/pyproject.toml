@@ -52,6 +52,11 @@ files = ["src"]
 # by running them (upgrade/downgrade/check), not by strict typing.
 exclude = ["^src/pattern_mirror/db/migrations/"]
 
+# scipy ships no py.typed; the Pattern Aggregator's Fisher's-exact call is the only use.
+[[tool.mypy.overrides]]
+module = "scipy.*"
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # importlib mode lets a source module's mirrored test keep its name in both api/ and
