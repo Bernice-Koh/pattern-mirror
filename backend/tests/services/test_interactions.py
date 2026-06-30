@@ -110,6 +110,18 @@ def test_undo_deactivates_the_dismissal(db_session: Session) -> None:
     assert [e.kind for e in events] == [FlagInteractionKind.dismiss, FlagInteractionKind.undo]
 
 
+def test_undo_without_a_prior_dismissal_is_a_noop(db_session: Session) -> None:
+    owner = _manager(db_session, "undo-noop")
+    flag = _flag_on_a_document(db_session, owner)
+
+    result = record_interaction(
+        db_session, flag_id=flag.id, owner_id=owner.id, kind=FlagInteractionKind.undo
+    )
+
+    assert result.dismissal is None
+    assert _dismissals_for(db_session, flag) == []
+
+
 def test_redismiss_reuses_one_dismissal_row(db_session: Session) -> None:
     owner = _manager(db_session, "redismiss")
     flag = _flag_on_a_document(db_session, owner)

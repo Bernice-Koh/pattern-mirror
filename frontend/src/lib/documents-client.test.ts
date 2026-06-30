@@ -3,10 +3,11 @@ import {
   createDocument,
   DocumentError,
   getDocument,
+  listDocuments,
   submitDocument,
   updateDraft,
 } from './documents-client'
-import type { DocumentResponse } from './documents-contract'
+import type { DocumentResponse, DocumentSummary } from './documents-contract'
 
 const DOCUMENT: DocumentResponse = {
   id: 'doc-1',
@@ -43,6 +44,32 @@ describe('documents-client', () => {
       }),
     )
     expect(result).toEqual(DOCUMENT)
+  })
+
+  it('listDocuments GETs the collection and returns the summaries', async () => {
+    const summaries: DocumentSummary[] = [
+      {
+        id: 'doc-1',
+        doc_type: 'jd',
+        title: 'Senior Engineer',
+        role_title: 'Engineering',
+        status: 'submitted',
+        created_at: '2026-06-02T00:00:00Z',
+        updated_at: '2026-06-02T00:00:00Z',
+        submitted_at: '2026-06-02T00:00:00Z',
+      },
+    ]
+    const fetchSpy = mockFetch(
+      new Response(JSON.stringify(summaries), { status: 200 }),
+    )
+
+    const result = await listDocuments()
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/documents',
+      expect.objectContaining({ method: 'GET' }),
+    )
+    expect(result).toEqual(summaries)
   })
 
   it('getDocument GETs the document by id', async () => {

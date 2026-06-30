@@ -61,6 +61,8 @@ function clearStoredId(docType: DocType): void {
 export interface DocumentSession {
   /** False until any stored draft has been restored, so the editor mounts once with its text. */
   isLoading: boolean
+  /** A submitted document opened from the history list: shown read-only, never autosaved. */
+  isReadOnly: boolean
   /** The backing document, created on first edit; null until then. */
   documentId: string | null
   /** The restored draft text at load, for the editor's initial (uncontrolled) content. */
@@ -76,26 +78,34 @@ export interface DocumentSession {
 
 /** Owns one editing session's document: restore a draft on load, create it on the first edit,
  *  autosave title and content on a pause, and submit the final text. Autosave is debounced
- *  separately from analysis — saving never triggers an engine run (design spec §2, §5, §13). */
-export function useDocumentSession(docType: DocType): DocumentSession {
+ *  separately from analysis — saving never triggers an engine run (design spec §2, §5, §13).
+ *
+ *  When `overrideDocId` is given (a row opened from My Documents, #69) that document loads
+ *  instead of the remembered draft: a draft resumes editing, a submitted one opens read-only. */
+export function useDocumentSession(
+  docType: DocType,
+  overrideDocId?: string,
+): DocumentSession {
   const [isLoading, setIsLoading] = useState(
-    () => readStoredId(docType) !== null,
+    () => overrideDocId != null || readStoredId(docType) !== null,
   )
+  const [isReadOnly, setIsReadOnly] = useState(false)
   const [documentId, setDocumentId] = useState<string | null>(null)
   const [initialContent, setInitialContent] = useState('')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const hasDocument = useRef(false)
 
-  // Restore a remembered draft once on mount; a missing or already-submitted one starts fresh.
+  // Load the document on mount: the explicitly opened one if given, else the remembered draft.
+  // A remembered id only restores a draft; an opened submitted document loads read-only.
   useEffect(() => {
-    const storedId = readStoredId(docType)
-    if (!storedId) return
+    const targetId = overrideDocId ?? readStoredId(docType)
+    if (!targetId) return
     let cancelled = false
-    getDocument(storedId)
+    getDocument(targetId)
       .then((document) => {
         if (cancelled) return
-        if (document.status !== 'draft') {
+        if (!overrideDocId && document.status !== 'draft') {
           clearStoredId(docType)
           return
         }
@@ -104,9 +114,15 @@ export function useDocumentSession(docType: DocType): DocumentSession {
         setTitle(document.title ?? '')
         setContent(document.content)
         setInitialContent(document.content)
+        setIsReadOnly(document.status === 'submitted')
+        if (overrideDocId && document.status === 'draft') {
+          writeStoredId(docType, document.id)
+        }
       })
       .catch((error) => {
-        if (!cancelled && error instanceof DocumentError) clearStoredId(docType)
+        if (!cancelled && error instanceof DocumentError && !overrideDocId) {
+          clearStoredId(docType)
+        }
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false)
@@ -114,7 +130,7 @@ export function useDocumentSession(docType: DocType): DocumentSession {
     return () => {
       cancelled = true
     }
-  }, [docType])
+  }, [docType, overrideDocId])
 
   // Create the backing document on the first edit so analysis has a stable id immediately,
   // rather than waiting for the slower autosave debounce.
@@ -151,23 +167,24 @@ export function useDocumentSession(docType: DocType): DocumentSession {
   const debouncedContent = useDebouncedValue(content, AUTOSAVE_DEBOUNCE_MS)
 
   useEffect(() => {
-    if (!documentId) return
+    if (!documentId || isReadOnly) return
     saveDraft({
       title: debouncedTitle.length > 0 ? debouncedTitle : null,
       content: debouncedContent,
     })
-  }, [documentId, debouncedTitle, debouncedContent, saveDraft])
+  }, [documentId, isReadOnly, debouncedTitle, debouncedContent, saveDraft])
 
   const submit = useCallback(() => {
-    if (!documentId || submitStatus === 'pending') return
+    if (!documentId || isReadOnly || submitStatus === 'pending') return
     runSubmit({ content })
-  }, [documentId, content, submitStatus, runSubmit])
+  }, [documentId, isReadOnly, content, submitStatus, runSubmit])
 
   const saveState = SAVE_STATE_BY_STATUS[saveStatus]
   const submitState = SUBMIT_STATE_BY_STATUS[submitStatus]
 
   return {
     isLoading,
+    isReadOnly,
     documentId,
     initialContent,
     title,

@@ -103,6 +103,10 @@ def test_brier_rewards_confident_and_correct() -> None:
     assert brier_score([0.5, 0.5], [1, 0]) == pytest.approx(0.25)
 
 
+def test_brier_none_without_samples() -> None:
+    assert brier_score([], []) is None
+
+
 def test_metric_length_mismatch_raises() -> None:
     with pytest.raises(ValueError, match="same length"):
         expected_calibration_error([0.5], [1, 0])

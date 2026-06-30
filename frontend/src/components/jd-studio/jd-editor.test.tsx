@@ -1,9 +1,10 @@
 import { createElement, createRef } from 'react'
 import type { ReactNode } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { CitedFlag } from '@/lib/analyze-contract'
+import { analyzeDocument } from '@/lib/analyze-client'
 import { JdEditor, type JdEditorHandle } from './jd-editor'
 import { useFlagStream } from './use-flag-stream'
 import { applyFlags } from './flag-decorations'
@@ -178,6 +179,38 @@ describe('JdEditor', () => {
     fireEvent.mouseOver(screen.getByText('young rockstar'))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('runs Layer 1 analysis once a document and text are present', async () => {
+    vi.mocked(analyzeDocument).mockResolvedValue({
+      document_id: 'doc-1',
+      analysis_run_id: 'run-1',
+      content_hash: 'hash',
+      flags: [],
+    })
+    render(<JdEditor documentId="doc-1" initialContent="biased text" />, {
+      wrapper,
+    })
+
+    await waitFor(() =>
+      expect(analyzeDocument).toHaveBeenCalledWith(
+        { document_id: 'doc-1', content: 'biased text' },
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('hides the Re-check control when opened read-only', () => {
+    render(
+      <JdEditor
+        documentId="doc-1"
+        editable={false}
+        initialContent="saved text"
+      />,
+      { wrapper },
+    )
+
+    expect(screen.queryByRole('button', { name: /re-check/i })).toBeNull()
   })
 
   it('disables the Re-check button until a document exists', () => {

@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime
 
 import structlog
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.core.errors import DocumentNotFoundError
@@ -38,6 +39,22 @@ def create_draft(session: Session, *, owner_id: uuid.UUID, doc_type: DocType) ->
     session.flush()
     _log.info("document.created", document_id=str(document.id), doc_type=doc_type.value)
     return document
+
+
+def list_documents(session: Session, *, owner_id: uuid.UUID) -> list[Document]:
+    """Return the owner's documents, newest first, for their document-history listing.
+
+    Owner-scoped by the query, not the caller — the manager-only visibility boundary is
+    structural, the same principle as the HR aggregate boundary (design spec §5). Ordered by
+    ``created_at`` descending, backed by ``ix_documents_owner_id_created_at``.
+    """
+    return list(
+        session.scalars(
+            select(Document)
+            .where(Document.owner_id == owner_id)
+            .order_by(Document.created_at.desc())
+        )
+    )
 
 
 def get_draft(session: Session, *, document_id: uuid.UUID, owner_id: uuid.UUID) -> Document:

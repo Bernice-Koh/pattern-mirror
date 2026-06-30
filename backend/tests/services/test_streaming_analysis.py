@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.contextual_pass import (
     ContextualFlag,
     ContextualPassResult,
@@ -23,6 +24,7 @@ from pattern_mirror.engine.contextual_pass import (
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
 from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
+from pattern_mirror.engine.state import FlagRecommendation
 from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.dictionary import Dictionary
 from pattern_mirror.models.documents import AnalysisRun, Document
@@ -49,6 +51,23 @@ from pattern_mirror.services.streaming_analysis import (
 )
 
 pytestmark = pytest.mark.db
+
+
+def test_attach_recommendations_skips_a_flag_that_did_not_surface() -> None:
+    """A recommendation for a candidate that never surfaced (a superseded run) is dropped."""
+    candidate = CandidateFlag(
+        source_stage=FlagSourceStage.contextual,
+        category=BiasCategory.age,
+        raw_span="young rockstar",
+    )
+    recommendation = FlagRecommendation(
+        flag=candidate,
+        rationale="r",
+        alternatives=["recent graduate", "early-career hire"],
+    )
+
+    # No surfaced flag matches the candidate, so nothing is written and no error is raised.
+    assert streaming_analysis._attach_recommendations({}, [recommendation]) is None
 
 
 class _FakeContextualClient:

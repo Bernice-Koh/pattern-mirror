@@ -13,6 +13,18 @@ export interface DocumentResponse {
   content: string
 }
 
+/** A document's metadata for the history listing — no text, just what a row shows. */
+export interface DocumentSummary {
+  id: string
+  doc_type: DocType
+  title: string | null
+  role_title: string | null
+  status: DocumentStatus
+  created_at: string
+  updated_at: string
+  submitted_at: string | null
+}
+
 export interface CreateDocumentRequest {
   doc_type: DocType
 }

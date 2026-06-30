@@ -12,6 +12,7 @@ body (so it rides ahead of autosave) and uses SSE for the one-directional stream
 
 import uuid
 from collections.abc import Iterator
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -31,6 +32,7 @@ from pattern_mirror.models.identity import User
 from pattern_mirror.services.documents import (
     create_draft,
     get_draft,
+    list_documents,
     submit_document,
     update_draft,
 )
@@ -79,6 +81,43 @@ def _serialise_document(document: Document) -> DocumentResponse:
         status=document.status,
         content=document.content,
     )
+
+
+class DocumentSummaryResponse(BaseModel):
+    """A document's metadata for the history listing — no text, just what a row shows."""
+
+    id: uuid.UUID
+    doc_type: DocType
+    title: str | None
+    role_title: str | None
+    status: DocumentStatus
+    created_at: datetime
+    updated_at: datetime
+    submitted_at: datetime | None
+
+
+def _serialise_document_summary(document: Document) -> DocumentSummaryResponse:
+    """Map an ORM document to its listing summary; content stays out of the list payload."""
+    return DocumentSummaryResponse(
+        id=document.id,
+        doc_type=document.doc_type,
+        title=document.title,
+        role_title=document.role_title,
+        status=document.status,
+        created_at=document.created_at,
+        updated_at=document.updated_at,
+        submitted_at=document.submitted_at,
+    )
+
+
+@router.get("/documents", summary="List the current user's documents")
+def list_my_documents(
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[DocumentSummaryResponse]:
+    """Return the current manager's own documents, newest first."""
+    documents = list_documents(session, owner_id=current_user.id)
+    return [_serialise_document_summary(document) for document in documents]
 
 
 @router.post("/documents", summary="Create a draft document")

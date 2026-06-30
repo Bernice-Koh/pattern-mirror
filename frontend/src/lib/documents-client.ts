@@ -6,6 +6,7 @@ import { apiFetch } from '@/lib/http'
 import type {
   CreateDocumentRequest,
   DocumentResponse,
+  DocumentSummary,
   SubmitRequest,
   UpdateDraftRequest,
 } from '@/lib/documents-contract'
@@ -29,6 +30,11 @@ async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
   })
   if (!response.ok) throw new DocumentError(response.status)
   return (await response.json()) as T
+}
+
+/** List the current manager's own documents, newest first, for their history view. */
+export function listDocuments(): Promise<DocumentSummary[]> {
+  return requestJson('/documents', { method: 'GET' })
 }
 
 /** Create an empty draft so the editor has a stable document to analyse and autosave against. */
