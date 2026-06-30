@@ -2,33 +2,13 @@ import type {
   AdoptionTrendPoint,
   DecisionPattern,
 } from '@/lib/patterns-contract'
+import { periodLabel } from '@/lib/pattern-format'
 import { BarChart, type BarDatum } from '@/components/ui/bar-chart'
 import { BehaviouralPatternCard } from '@/components/pattern-dashboard/behavioural-pattern-card'
 
 interface BehaviouralReflectionProps {
   patterns: DecisionPattern[]
   trend: AdoptionTrendPoint[]
-}
-
-const MONTH_LABELS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-]
-
-/** "2026-03" → "Mar"; the raw period is the fallback for an unexpected shape. */
-function periodLabel(period: string): string {
-  const month = Number(period.split('-')[1])
-  return MONTH_LABELS[month - 1] ?? period
 }
 
 function percent(rate: number): string {
