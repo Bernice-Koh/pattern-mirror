@@ -17,7 +17,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
-from pattern_mirror.models.enums import AnalysisRunStatus, BiasCategory, DocType
+from pattern_mirror.models.enums import (
+    AnalysisRunStatus,
+    BiasCategory,
+    DocType,
+    FlagInteractionKind,
+)
 from pattern_mirror.models.identity import Subject
 from pattern_mirror.services.behavioural_states import (
     ADOPTION_STATES,
@@ -85,12 +90,44 @@ class AdoptionTrendPoint:
 
 
 @dataclass(frozen=True)
+class FlagVolumePoint:
+    """Average flags raised per submitted document within one calendar month (§2 View 3).
+
+    A writing-volume trend: how much flagged language the manager wrote, not how they decided on it.
+    Descriptive, not significance-gated, like the adoption trend.
+    """
+
+    period: str
+    document_count: int
+    flag_count: int
+    flags_per_document: float
+
+
+@dataclass(frozen=True)
+class CategoryImprovement:
+    """A bias category whose flags-per-document fell from the manager's first period to the latest.
+
+    Only falls are reported (``reduction`` is always positive), so ``first_rate`` is never zero and
+    the share reduction ``reduction / first_rate`` is well defined for the dashboard.
+    """
+
+    category: BiasCategory
+    first_period: str
+    last_period: str
+    first_rate: float
+    last_rate: float
+    reduction: float
+
+
+@dataclass(frozen=True)
 class PatternReport:
     """The manager's full dashboard payload: both pattern families, each already gated."""
 
     writing_patterns: tuple[WritingPattern, ...]
     decision_patterns: tuple[DecisionPattern, ...]
     adoption_trend: tuple[AdoptionTrendPoint, ...]
+    flag_volume_trend: tuple[FlagVolumePoint, ...]
+    category_improvements: tuple[CategoryImprovement, ...]
 
 
 @dataclass(frozen=True)
@@ -276,27 +313,35 @@ def _submitted_content_by_document(session: Session, owner_id: uuid.UUID) -> dic
     return {doc_id: content for doc_id, content in rows if content is not None}
 
 
-def _classified_flags(
-    session: Session, content_by_document: dict[uuid.UUID, str]
-) -> list[_ClassifiedFlag]:
-    """Classify each flagged thing on the submitted documents into one behavioural state.
+@dataclass(frozen=True)
+class _FlagGroup:
+    """One distinct flagged thing the manager saw: a ``(document, span, fingerprint)`` group."""
+
+    document_id: uuid.UUID
+    category: BiasCategory
+    raw_span: str
+    interaction_kinds: tuple[FlagInteractionKind, ...]
+
+
+def _surfaced_flag_groups(session: Session, document_ids: list[uuid.UUID]) -> list[_FlagGroup]:
+    """Group each document's flags by ``(span, fingerprint)`` and keep the ones the manager saw.
 
     Flags regenerate every run, so a dismissal recorded on one run's flag and the surviving flag
-    on a later run share a signature; grouping by ``(document, span, fingerprint)`` collects the
-    decision wherever it was logged. A group never surfaced (all suppressed, no interaction) is a
-    flag the manager never saw, so it does not count toward adoption.
+    on a later run share a signature; grouping collects the decision wherever it was logged. A group
+    never surfaced (all suppressed, no interaction) is a flag the manager never saw.
     """
     flags = session.scalars(
         select(Flag)
-        .where(Flag.document_id.in_(list(content_by_document)))
+        .where(Flag.document_id.in_(document_ids))
         .options(selectinload(Flag.interactions))
     ).all()
-    groups: dict[tuple[uuid.UUID, str, str], list[Flag]] = defaultdict(list)
+    by_signature: dict[tuple[uuid.UUID, str, str], list[Flag]] = defaultdict(list)
     for flag in flags:
-        groups[(flag.document_id, flag.normalised_span, flag.sentence_fingerprint)].append(flag)
+        signature = (flag.document_id, flag.normalised_span, flag.sentence_fingerprint)
+        by_signature[signature].append(flag)
 
-    classified: list[_ClassifiedFlag] = []
-    for (document_id, _, _), group in groups.items():
+    groups: list[_FlagGroup] = []
+    for (document_id, _, _), group in by_signature.items():
         interactions = sorted(
             (event for flag in group for event in flag.interactions),
             key=lambda event: event.created_at,
@@ -304,14 +349,31 @@ def _classified_flags(
         surfaced = any(not flag.suppressed for flag in group) or bool(interactions)
         if not surfaced:
             continue
-        state = classify(
-            FlagOutcome(
-                flagged_text=group[0].raw_span,
+        groups.append(
+            _FlagGroup(
+                document_id=document_id,
+                category=group[0].category,
+                raw_span=group[0].raw_span,
                 interaction_kinds=tuple(event.kind for event in interactions),
-                final_text=content_by_document[document_id],
             )
         )
-        classified.append(_ClassifiedFlag(document_id, group[0].category, state))
+    return groups
+
+
+def _classified_flags(
+    session: Session, content_by_document: dict[uuid.UUID, str]
+) -> list[_ClassifiedFlag]:
+    """Reduce each surfaced flag on the submitted documents to its behavioural state."""
+    classified: list[_ClassifiedFlag] = []
+    for group in _surfaced_flag_groups(session, list(content_by_document)):
+        state = classify(
+            FlagOutcome(
+                flagged_text=group.raw_span,
+                interaction_kinds=group.interaction_kinds,
+                final_text=content_by_document[group.document_id],
+            )
+        )
+        classified.append(_ClassifiedFlag(group.document_id, group.category, state))
     return classified
 
 
@@ -417,8 +479,95 @@ def aggregate_adoption_trend(session: Session, *, owner_id: uuid.UUID) -> list[A
     return trend
 
 
+def aggregate_flag_volume_trend(session: Session, *, owner_id: uuid.UUID) -> list[FlagVolumePoint]:
+    """Track the average flags raised per submitted document, month by month (§2 View 3).
+
+    Counts the distinct flags the manager was shown on each submitted document and averages them
+    over every document submitted that month, so a clean document pulls the average down. The
+    writing-volume counterpart to the adoption trend: descriptive context, not a gated claim.
+
+    Args:
+        session: The active database session.
+        owner_id: The manager whose writing is analysed (their data only, never HR's).
+
+    Returns:
+        One point per month the manager submitted a document, ordered chronologically.
+    """
+    period_by_document = _period_by_document(session, owner_id)
+    if not period_by_document:
+        return []
+    documents_by_period: Counter[str] = Counter(period_by_document.values())
+    flags_by_period: Counter[str] = Counter()
+    for group in _surfaced_flag_groups(session, list(period_by_document)):
+        period = period_by_document.get(group.document_id)
+        if period is not None:
+            flags_by_period[period] += 1
+
+    return [
+        FlagVolumePoint(
+            period=period,
+            document_count=documents_by_period[period],
+            flag_count=flags_by_period[period],
+            flags_per_document=flags_by_period[period] / documents_by_period[period],
+        )
+        for period in sorted(documents_by_period)
+    ]
+
+
+def aggregate_category_improvements(
+    session: Session, *, owner_id: uuid.UUID
+) -> list[CategoryImprovement]:
+    """Per-category fall in flags-per-document from the manager's first period to the latest.
+
+    Compares each bias category's average flags per document in the earliest month against the
+    latest and reports only the categories that fell. Needs at least two months to establish a
+    trend; with less history it returns nothing rather than inventing one.
+
+    Args:
+        session: The active database session.
+        owner_id: The manager whose writing is analysed (their data only, never HR's).
+
+    Returns:
+        Improved categories, largest reduction first.
+    """
+    period_by_document = _period_by_document(session, owner_id)
+    periods = sorted(set(period_by_document.values()))
+    if len(periods) < 2:
+        return []
+    first, last = periods[0], periods[-1]
+    documents_by_period: Counter[str] = Counter(period_by_document.values())
+
+    first_flags: Counter[BiasCategory] = Counter()
+    last_flags: Counter[BiasCategory] = Counter()
+    for group in _surfaced_flag_groups(session, list(period_by_document)):
+        period = period_by_document.get(group.document_id)
+        if period == first:
+            first_flags[group.category] += 1
+        elif period == last:
+            last_flags[group.category] += 1
+
+    improvements: list[CategoryImprovement] = []
+    for category in first_flags.keys() | last_flags.keys():
+        first_rate = first_flags[category] / documents_by_period[first]
+        last_rate = last_flags[category] / documents_by_period[last]
+        reduction = first_rate - last_rate
+        if reduction > 0:
+            improvements.append(
+                CategoryImprovement(
+                    category=category,
+                    first_period=first,
+                    last_period=last,
+                    first_rate=first_rate,
+                    last_rate=last_rate,
+                    reduction=reduction,
+                )
+            )
+    improvements.sort(key=lambda item: (-item.reduction, item.category.value))
+    return improvements
+
+
 def aggregate_patterns(session: Session, *, owner_id: uuid.UUID, threshold: float) -> PatternReport:
-    """The Module's public face: both gated pattern families plus the adoption trend (§13)."""
+    """The Module's public face: the gated pattern families plus the descriptive trends."""
     return PatternReport(
         writing_patterns=tuple(
             aggregate_writing_patterns(session, owner_id=owner_id, threshold=threshold)
@@ -427,4 +576,6 @@ def aggregate_patterns(session: Session, *, owner_id: uuid.UUID, threshold: floa
             aggregate_decision_patterns(session, owner_id=owner_id, threshold=threshold)
         ),
         adoption_trend=tuple(aggregate_adoption_trend(session, owner_id=owner_id)),
+        flag_volume_trend=tuple(aggregate_flag_volume_trend(session, owner_id=owner_id)),
+        category_improvements=tuple(aggregate_category_improvements(session, owner_id=owner_id)),
     )

@@ -22,9 +22,13 @@ from pattern_mirror.models.enums import (
 from pattern_mirror.models.identity import Subject, User
 from pattern_mirror.services.pattern_aggregator import (
     AdoptionTrendPoint,
+    CategoryImprovement,
+    FlagVolumePoint,
     PatternMode,
     aggregate_adoption_trend,
+    aggregate_category_improvements,
     aggregate_decision_patterns,
+    aggregate_flag_volume_trend,
     aggregate_patterns,
     aggregate_writing_patterns,
 )
@@ -437,3 +441,149 @@ def test_adoption_trend_excludes_documents_without_a_submission_timestamp(
     )
 
     assert aggregate_adoption_trend(db_session, owner_id=owner.id) == []
+
+
+def _submitted_doc(
+    session: Session,
+    owner: User,
+    *,
+    terms: list[tuple[str, BiasCategory]],
+    submitted_at: datetime,
+) -> Document:
+    """A submitted document carrying ``terms`` as surfaced flags (an empty list is a clean doc)."""
+    document = Document(
+        owner_id=owner.id,
+        doc_type=DocType.feedback,
+        status=DocumentStatus.submitted,
+        submitted_content="the final text",
+        submitted_at=submitted_at,
+    )
+    session.add(document)
+    session.flush()
+    run = _run(session, document.id)
+    for term, category in terms:
+        session.add(_flag(document.id, run.id, term, category))
+    session.flush()
+    return document
+
+
+def test_flag_volume_trend_averages_flags_per_document_by_month(db_session: Session) -> None:
+    owner = _manager(db_session, "volume")
+    january = datetime(2026, 1, 15, tzinfo=UTC)
+    february = datetime(2026, 2, 10, tzinfo=UTC)
+    # January: two flags on one doc, plus a clean doc -> 2 flags over 2 documents.
+    _submitted_doc(
+        db_session,
+        owner,
+        terms=[("sharp", BiasCategory.gender), ("aggressive", BiasCategory.gender)],
+        submitted_at=january,
+    )
+    _submitted_doc(db_session, owner, terms=[], submitted_at=january)
+    # February: one flag over three documents.
+    _submitted_doc(db_session, owner, terms=[("bossy", BiasCategory.gender)], submitted_at=february)
+    _submitted_doc(db_session, owner, terms=[], submitted_at=february)
+    _submitted_doc(db_session, owner, terms=[], submitted_at=february)
+
+    trend = aggregate_flag_volume_trend(db_session, owner_id=owner.id)
+
+    assert trend == [
+        FlagVolumePoint("2026-01", document_count=2, flag_count=2, flags_per_document=1.0),
+        FlagVolumePoint("2026-02", document_count=3, flag_count=1, flags_per_document=1 / 3),
+    ]
+
+
+def test_flag_volume_trend_empty_without_submissions(db_session: Session) -> None:
+    owner = _manager(db_session, "volume-empty")
+    _feedback(db_session, owner, gender="male", terms=[_SHARP])  # a draft run, never submitted
+
+    assert aggregate_flag_volume_trend(db_session, owner_id=owner.id) == []
+
+
+def test_flag_volume_trend_excludes_unsurfaced_flags(db_session: Session) -> None:
+    owner = _manager(db_session, "volume-suppressed")
+    # Judge-suppressed, never shown, never acted on: not flagged language the manager saw.
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.gender,
+        span="bossy",
+        kind=None,
+        present_in_final=True,
+        suppressed=True,
+        submitted_at=datetime(2026, 1, 15, tzinfo=UTC),
+    )
+
+    trend = aggregate_flag_volume_trend(db_session, owner_id=owner.id)
+
+    assert trend == [
+        FlagVolumePoint("2026-01", document_count=1, flag_count=0, flags_per_document=0.0)
+    ]
+
+
+def test_category_improvements_reports_a_fallen_category(db_session: Session) -> None:
+    owner = _manager(db_session, "improved")
+    _submitted_doc(
+        db_session,
+        owner,
+        terms=[("sharp", BiasCategory.gender)],
+        submitted_at=datetime(2026, 1, 15, tzinfo=UTC),
+    )
+    _submitted_doc(db_session, owner, terms=[], submitted_at=datetime(2026, 6, 10, tzinfo=UTC))
+
+    improvements = aggregate_category_improvements(db_session, owner_id=owner.id)
+
+    assert improvements == [
+        CategoryImprovement(
+            category=BiasCategory.gender,
+            first_period="2026-01",
+            last_period="2026-06",
+            first_rate=1.0,
+            last_rate=0.0,
+            reduction=1.0,
+        )
+    ]
+
+
+def test_category_improvements_needs_two_periods(db_session: Session) -> None:
+    owner = _manager(db_session, "improved-one-period")
+    _submitted_doc(
+        db_session,
+        owner,
+        terms=[("sharp", BiasCategory.gender)],
+        submitted_at=datetime(2026, 1, 15, tzinfo=UTC),
+    )
+
+    assert aggregate_category_improvements(db_session, owner_id=owner.id) == []
+
+
+def test_category_improvements_excludes_a_worsened_category(db_session: Session) -> None:
+    owner = _manager(db_session, "worsened")
+    _submitted_doc(db_session, owner, terms=[], submitted_at=datetime(2026, 1, 15, tzinfo=UTC))
+    _submitted_doc(
+        db_session,
+        owner,
+        terms=[("sharp", BiasCategory.gender)],
+        submitted_at=datetime(2026, 6, 10, tzinfo=UTC),
+    )
+
+    assert aggregate_category_improvements(db_session, owner_id=owner.id) == []
+
+
+def test_category_improvements_order_largest_reduction_first(db_session: Session) -> None:
+    owner = _manager(db_session, "improved-order")
+    _submitted_doc(
+        db_session,
+        owner,
+        terms=[
+            ("sharp", BiasCategory.gender),
+            ("aggressive", BiasCategory.gender),
+            ("young", BiasCategory.age),
+        ],
+        submitted_at=datetime(2026, 1, 15, tzinfo=UTC),
+    )
+    _submitted_doc(db_session, owner, terms=[], submitted_at=datetime(2026, 6, 10, tzinfo=UTC))
+
+    improvements = aggregate_category_improvements(db_session, owner_id=owner.id)
+
+    assert [item.category for item in improvements] == [BiasCategory.gender, BiasCategory.age]
+    assert [item.reduction for item in improvements] == [2.0, 1.0]
