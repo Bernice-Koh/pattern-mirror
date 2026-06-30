@@ -4,7 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { YourPatterns } from './your-patterns'
 import { getPatterns } from '@/lib/patterns-client'
-import type { PatternReport, WritingPattern } from '@/lib/patterns-contract'
+import type {
+  DecisionPattern,
+  PatternReport,
+  WritingPattern,
+} from '@/lib/patterns-contract'
 
 vi.mock('@/lib/patterns-client', () => ({
   getPatterns: vi.fn(),
@@ -20,8 +24,15 @@ vi.mock('@tanstack/react-router', () => ({
 
 const getPatternsMock = vi.mocked(getPatterns)
 
-function report(writing: WritingPattern[]): PatternReport {
-  return { writing_patterns: writing, decision_patterns: [] }
+function report(
+  writing: WritingPattern[],
+  decision: DecisionPattern[] = [],
+): PatternReport {
+  return {
+    writing_patterns: writing,
+    decision_patterns: decision,
+    adoption_trend: [],
+  }
 }
 
 function writingPattern(over: Partial<WritingPattern> = {}): WritingPattern {
@@ -106,6 +117,36 @@ describe('YourPatterns', () => {
 
     expect(
       await screen.findByText(/No writing patterns have cleared/),
+    ).toBeInTheDocument()
+  })
+
+  it('renders the behavioural-reflection layer over decision patterns', async () => {
+    getPatternsMock.mockResolvedValue(
+      report(
+        [],
+        [
+          {
+            category: 'gender',
+            adopted_count: 2,
+            rejected_count: 7,
+            total_count: 9,
+            adoption_rate: 2 / 9,
+            p_value: 0.01,
+            document_ids: ['d1'],
+          },
+        ],
+      ),
+    )
+
+    render(<YourPatterns />, { wrapper })
+
+    expect(
+      await screen.findByText(
+        'You revised flagged gender language in 2 of 9 flagged cases.',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText("How you've responded to flags"),
     ).toBeInTheDocument()
   })
 })

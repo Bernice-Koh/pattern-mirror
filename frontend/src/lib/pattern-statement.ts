@@ -3,7 +3,8 @@
  *  come gated from the backend (#66); this only states them plainly so the manager draws the
  *  conclusion (Mirror-not-Judge, design spec §2 View 3). */
 
-import type { BiasCategory, WritingPattern } from '@/lib/patterns-contract'
+import type { WritingPattern } from '@/lib/patterns-contract'
+import { categoryLabel, formatPValue } from '@/lib/pattern-format'
 
 /** Plural subject nouns for the gender groups the aggregator keys on; raw key is the fallback. */
 const GROUP_NOUNS: Record<string, string> = {
@@ -28,18 +29,6 @@ export interface PatternStatement {
 
 function groupNoun(key: string): string {
   return GROUP_NOUNS[key] ?? key
-}
-
-/** Title-case a category enum value: `family_status` → "Family status". */
-function categoryLabel(category: BiasCategory): string {
-  const spaced = category.replace(/_/g, ' ')
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1)
-}
-
-/** One significant figure is enough for a p-value pill; floor the vanishingly small. */
-function formatPValue(pValue: number): string {
-  if (pValue < 0.0001) return '< 0.0001'
-  return parseFloat(pValue.toPrecision(1)).toString()
 }
 
 export function patternStatement(pattern: WritingPattern): PatternStatement {

@@ -71,11 +71,26 @@ class DecisionPattern:
 
 
 @dataclass(frozen=True)
+class AdoptionTrendPoint:
+    """The manager's overall adoption rate within one calendar month (§13, the "over time" view).
+
+    Descriptive, not significance-gated: a trend line states the rate, it makes no categorical
+    claim, so the Fisher's gate that guards the decision patterns does not apply here.
+    """
+
+    period: str
+    adopted_count: int
+    total_count: int
+    adoption_rate: float
+
+
+@dataclass(frozen=True)
 class PatternReport:
     """The manager's full dashboard payload: both pattern families, each already gated."""
 
     writing_patterns: tuple[WritingPattern, ...]
     decision_patterns: tuple[DecisionPattern, ...]
+    adoption_trend: tuple[AdoptionTrendPoint, ...]
 
 
 @dataclass(frozen=True)
@@ -352,8 +367,58 @@ def aggregate_decision_patterns(
     return patterns
 
 
+def _period_by_document(session: Session, owner_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    """Map each submitted document to its ``YYYY-MM`` submission month, the trend's time anchor."""
+    rows = session.execute(
+        select(Document.id, Document.submitted_at).where(
+            Document.owner_id == owner_id,
+            Document.submitted_content.is_not(None),
+            Document.submitted_at.is_not(None),
+        )
+    ).all()
+    return {doc_id: submitted_at.strftime("%Y-%m") for doc_id, submitted_at in rows}
+
+
+def aggregate_adoption_trend(session: Session, *, owner_id: uuid.UUID) -> list[AdoptionTrendPoint]:
+    """Track the manager's overall adoption rate month by month (design spec §13, "over time").
+
+    Buckets every classified flag by the submission month of its document and reports the share
+    that landed in an adoption state. Descriptive context for the dashboard, not a gated claim.
+
+    Args:
+        session: The active database session.
+        owner_id: The manager whose decisions are analysed (their data only, never HR's).
+
+    Returns:
+        One point per month the manager submitted a flagged document, ordered chronologically.
+    """
+    content_by_document = _submitted_content_by_document(session, owner_id)
+    if not content_by_document:
+        return []
+    period_by_document = _period_by_document(session, owner_id)
+    states_by_period: dict[str, list[BehaviouralState]] = defaultdict(list)
+    for item in _classified_flags(session, content_by_document):
+        period = period_by_document.get(item.document_id)
+        if period is not None:
+            states_by_period[period].append(item.state)
+
+    trend: list[AdoptionTrendPoint] = []
+    for period in sorted(states_by_period):
+        states = states_by_period[period]
+        adopted = sum(1 for state in states if state in ADOPTION_STATES)
+        trend.append(
+            AdoptionTrendPoint(
+                period=period,
+                adopted_count=adopted,
+                total_count=len(states),
+                adoption_rate=adopted / len(states),
+            )
+        )
+    return trend
+
+
 def aggregate_patterns(session: Session, *, owner_id: uuid.UUID, threshold: float) -> PatternReport:
-    """The Module's public face: both gated pattern families for one manager's dashboard."""
+    """The Module's public face: both gated pattern families plus the adoption trend (§13)."""
     return PatternReport(
         writing_patterns=tuple(
             aggregate_writing_patterns(session, owner_id=owner_id, threshold=threshold)
@@ -361,4 +426,5 @@ def aggregate_patterns(session: Session, *, owner_id: uuid.UUID, threshold: floa
         decision_patterns=tuple(
             aggregate_decision_patterns(session, owner_id=owner_id, threshold=threshold)
         ),
+        adoption_trend=tuple(aggregate_adoption_trend(session, owner_id=owner_id)),
     )

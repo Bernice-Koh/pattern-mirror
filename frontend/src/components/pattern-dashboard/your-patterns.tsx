@@ -4,6 +4,7 @@ import type { WritingPattern } from '@/lib/patterns-contract'
 import { getPatterns } from '@/lib/patterns-client'
 import { PatternCard } from '@/components/pattern-dashboard/pattern-card'
 import { PatternOverviewStub } from '@/components/pattern-dashboard/pattern-overview-stub'
+import { BehaviouralReflection } from '@/components/pattern-dashboard/behavioural-reflection'
 
 const ACROSS_TIME_TITLE = 'Across your history'
 
@@ -52,9 +53,9 @@ function groupByScope(
   return groups
 }
 
-/** View 3 Layer 1 — the manager's significant writing patterns as cards with drill-down (#67).
- *  The overview sections above are static scaffold (#68 and the trend charts fill them); the
- *  "Still recurring" cards are live over the gated aggregator output (#66). */
+/** View 3 — the manager's pattern dashboard: significant writing patterns as cards with drill-down
+ *  (Layer 1, #67) and the behavioural-reflection layer below (Layer 2, #68). Both are live over the
+ *  gated aggregator output (#66); the overview sections above stay static scaffold for now. */
 export function YourPatterns() {
   const { data, isLoading } = useQuery({
     queryKey: ['patterns'],
@@ -99,7 +100,14 @@ export function YourPatterns() {
       <h2 className="mb-3.5 font-sans text-body-sm font-semibold text-ink-muted">
         Still recurring
       </h2>
-      {recurring}
+      <div className="mb-7">{recurring}</div>
+
+      {!isLoading && (
+        <BehaviouralReflection
+          patterns={data?.decision_patterns ?? []}
+          trend={data?.adoption_trend ?? []}
+        />
+      )}
 
       <p className="mt-2 border-t border-border pt-4 font-sans text-meta text-ink-faint">
         Only patterns that pass Fisher&apos;s exact significance testing appear

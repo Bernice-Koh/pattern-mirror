@@ -17,6 +17,7 @@ const REPORT: PatternReport = {
     },
   ],
   decision_patterns: [],
+  adoption_trend: [],
 }
 
 function mockFetch(response: Response) {

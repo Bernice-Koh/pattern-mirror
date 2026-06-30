@@ -1,6 +1,7 @@
 """GET /patterns returns the signed-in manager's gated patterns, and 401s without a token."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -120,6 +121,7 @@ def _decided_flag(
     span: str,
     kind: FlagInteractionKind,
     present_in_final: bool,
+    submitted_at: datetime | None = None,
 ) -> None:
     final_text = f"a notably {span} contributor" if present_in_final else "a balanced contributor"
     document = Document(
@@ -127,6 +129,7 @@ def _decided_flag(
         doc_type=DocType.feedback,
         status=DocumentStatus.submitted,
         submitted_content=final_text,
+        submitted_at=submitted_at,
     )
     db_session.add(document)
     db_session.flush()
@@ -186,11 +189,36 @@ def test_returns_a_significant_decision_pattern(
     assert len(decisions["gender"]["document_ids"]) == 6
 
 
+def test_returns_the_adoption_trend(
+    patterns_client: TestClient, db_session: Session, owner: User
+) -> None:
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.gender,
+        span="sharp",
+        kind=FlagInteractionKind.accept,
+        present_in_final=False,
+        submitted_at=datetime(2026, 3, 1, tzinfo=UTC),
+    )
+
+    response = patterns_client.get("/patterns")
+
+    assert response.status_code == 200
+    assert response.json()["adoption_trend"] == [
+        {"period": "2026-03", "adopted_count": 1, "total_count": 1, "adoption_rate": 1.0}
+    ]
+
+
 def test_empty_history_returns_empty_families(patterns_client: TestClient) -> None:
     response = patterns_client.get("/patterns")
 
     assert response.status_code == 200
-    assert response.json() == {"writing_patterns": [], "decision_patterns": []}
+    assert response.json() == {
+        "writing_patterns": [],
+        "decision_patterns": [],
+        "adoption_trend": [],
+    }
 
 
 def test_unauthenticated_request_is_rejected(db_session: Session) -> None:

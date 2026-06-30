@@ -78,6 +78,7 @@
   --radius-card: var(--radius-card);
   --radius-popover: var(--radius-popover);
   --radius-pill: var(--radius-pill);
+  --radius-bar: var(--radius-bar);
 
   /* Shadows */
   --shadow-ring-card: var(--ring-card);
