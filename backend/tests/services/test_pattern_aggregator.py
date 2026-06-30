@@ -7,12 +7,14 @@ import pytest
 from sqlalchemy.orm import Session
 
 from pattern_mirror.models.documents import AnalysisRun, Document
-from pattern_mirror.models.engine import Flag
+from pattern_mirror.models.engine import Flag, FlagInteraction
 from pattern_mirror.models.enums import (
     AnalysisRunStatus,
     AnalysisTrigger,
     BiasCategory,
     DocType,
+    DocumentStatus,
+    FlagInteractionKind,
     FlagScope,
     FlagSourceStage,
     SubjectType,
@@ -20,6 +22,8 @@ from pattern_mirror.models.enums import (
 from pattern_mirror.models.identity import Subject, User
 from pattern_mirror.services.pattern_aggregator import (
     PatternMode,
+    aggregate_decision_patterns,
+    aggregate_patterns,
     aggregate_writing_patterns,
 )
 
@@ -250,3 +254,114 @@ def test_per_role_pattern_is_scoped_to_one_role(db_session: Session) -> None:
 def test_no_documents_returns_empty(db_session: Session) -> None:
     owner = _manager(db_session, "empty")
     assert aggregate_writing_patterns(db_session, owner_id=owner.id, threshold=_THRESHOLD) == []
+
+
+def _decided_flag(
+    session: Session,
+    owner: User,
+    *,
+    category: BiasCategory,
+    span: str,
+    kind: FlagInteractionKind | None,
+    present_in_final: bool,
+    suppressed: bool = False,
+) -> Document:
+    """A submitted document carrying one flag the manager accepted, dismissed, or ignored."""
+    final_text = f"a notably {span} contributor" if present_in_final else "a balanced contributor"
+    document = Document(
+        owner_id=owner.id,
+        doc_type=DocType.feedback,
+        status=DocumentStatus.submitted,
+        submitted_content=final_text,
+    )
+    session.add(document)
+    session.flush()
+    run = _run(session, document.id)
+    flag = _flag(document.id, run.id, span, category, suppressed=suppressed)
+    session.add(flag)
+    session.flush()
+    if kind is not None:
+        session.add(FlagInteraction(flag_id=flag.id, kind=kind))
+        session.flush()
+    return document
+
+
+def test_decision_pattern_surfaces_a_category_adopted_differently(db_session: Session) -> None:
+    owner = _manager(db_session, "decision")
+    for index in range(6):
+        _decided_flag(
+            db_session,
+            owner,
+            category=BiasCategory.gender,
+            span=f"aggressive{index}",
+            kind=FlagInteractionKind.dismiss,
+            present_in_final=True,  # dismissed and kept -> rejection
+        )
+    for index in range(6):
+        _decided_flag(
+            db_session,
+            owner,
+            category=BiasCategory.age,
+            span=f"young{index}",
+            kind=FlagInteractionKind.accept,
+            present_in_final=False,  # explicit accept -> adoption
+        )
+
+    patterns = aggregate_decision_patterns(db_session, owner_id=owner.id, threshold=_THRESHOLD)
+
+    by_category = {pattern.category: pattern for pattern in patterns}
+    assert by_category[BiasCategory.gender].adoption_rate == 0.0
+    assert by_category[BiasCategory.gender].rejected_count == 6
+    assert by_category[BiasCategory.age].adoption_rate == 1.0
+    assert by_category[BiasCategory.age].total_count == 6
+    assert all(pattern.p_value < _THRESHOLD for pattern in patterns)
+
+
+def test_uniform_decisions_surface_nothing(db_session: Session) -> None:
+    owner = _manager(db_session, "uniform")
+    for index, category in enumerate([BiasCategory.gender, BiasCategory.age] * 4):
+        _decided_flag(
+            db_session,
+            owner,
+            category=category,
+            span=f"term{index}",
+            kind=FlagInteractionKind.accept,
+            present_in_final=False,
+        )
+
+    assert aggregate_decision_patterns(db_session, owner_id=owner.id, threshold=_THRESHOLD) == []
+
+
+def test_unsurfaced_flags_do_not_count_as_decisions(db_session: Session) -> None:
+    owner = _manager(db_session, "unsurfaced")
+    # Judge-suppressed, never shown, never acted on: excluded from the adoption denominator.
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.gender,
+        span="bossy",
+        kind=None,
+        present_in_final=True,
+        suppressed=True,
+    )
+
+    assert aggregate_decision_patterns(db_session, owner_id=owner.id, threshold=_THRESHOLD) == []
+
+
+def test_no_submitted_documents_returns_empty(db_session: Session) -> None:
+    owner = _manager(db_session, "no-submit")
+    _feedback(db_session, owner, gender="male", terms=[_SHARP])  # a draft run, never submitted
+
+    assert aggregate_decision_patterns(db_session, owner_id=owner.id, threshold=_THRESHOLD) == []
+
+
+def test_aggregate_patterns_returns_both_families(db_session: Session) -> None:
+    owner = _manager(db_session, "report")
+    male_docs = [_feedback(db_session, owner, gender="male", terms=[_SHARP]) for _ in range(5)]
+    for _ in range(5):
+        _feedback(db_session, owner, gender="female", terms=[])
+
+    report = aggregate_patterns(db_session, owner_id=owner.id, threshold=_THRESHOLD)
+
+    assert {doc.id for doc in male_docs} == set(report.writing_patterns[0].document_ids)
+    assert report.decision_patterns == ()

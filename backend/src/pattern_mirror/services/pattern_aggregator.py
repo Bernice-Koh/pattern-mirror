@@ -13,12 +13,18 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
 from pattern_mirror.models.enums import AnalysisRunStatus, BiasCategory, DocType
 from pattern_mirror.models.identity import Subject
+from pattern_mirror.services.behavioural_states import (
+    ADOPTION_STATES,
+    BehaviouralState,
+    FlagOutcome,
+    classify,
+)
 from pattern_mirror.services.significance import Contingency, fisher_p_value, is_significant
 
 # Writing patterns correlate a term with the subject's gender; age (3+ bands) needs a
@@ -49,6 +55,27 @@ class WritingPattern:
     p_value: float
     role_title: str | None
     document_ids: tuple[uuid.UUID, ...]
+
+
+@dataclass(frozen=True)
+class DecisionPattern:
+    """A bias category whose adoption rate differs from the rest beyond chance (§13, Layer 2)."""
+
+    category: BiasCategory
+    adopted_count: int
+    rejected_count: int
+    total_count: int
+    adoption_rate: float
+    p_value: float
+    document_ids: tuple[uuid.UUID, ...]
+
+
+@dataclass(frozen=True)
+class PatternReport:
+    """The manager's full dashboard payload: both pattern families, each already gated."""
+
+    writing_patterns: tuple[WritingPattern, ...]
+    decision_patterns: tuple[DecisionPattern, ...]
 
 
 @dataclass(frozen=True)
@@ -212,3 +239,126 @@ def aggregate_writing_patterns(
     patterns.extend(_per_role_patterns(docs, threshold))
     patterns.sort(key=lambda pattern: (pattern.p_value, pattern.term, pattern.category.value))
     return patterns
+
+
+@dataclass(frozen=True)
+class _ClassifiedFlag:
+    """One distinct flagged thing on a submitted document, reduced to its behavioural state."""
+
+    document_id: uuid.UUID
+    category: BiasCategory
+    state: BehaviouralState
+
+
+def _submitted_content_by_document(session: Session, owner_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    """The manager's submitted documents mapped to their final text (the §13 outcome of record)."""
+    rows = session.execute(
+        select(Document.id, Document.submitted_content).where(
+            Document.owner_id == owner_id,
+            Document.submitted_content.is_not(None),
+        )
+    ).all()
+    return {doc_id: content for doc_id, content in rows if content is not None}
+
+
+def _classified_flags(
+    session: Session, content_by_document: dict[uuid.UUID, str]
+) -> list[_ClassifiedFlag]:
+    """Classify each flagged thing on the submitted documents into one behavioural state.
+
+    Flags regenerate every run, so a dismissal recorded on one run's flag and the surviving flag
+    on a later run share a signature; grouping by ``(document, span, fingerprint)`` collects the
+    decision wherever it was logged. A group never surfaced (all suppressed, no interaction) is a
+    flag the manager never saw, so it does not count toward adoption.
+    """
+    flags = session.scalars(
+        select(Flag)
+        .where(Flag.document_id.in_(list(content_by_document)))
+        .options(selectinload(Flag.interactions))
+    ).all()
+    groups: dict[tuple[uuid.UUID, str, str], list[Flag]] = defaultdict(list)
+    for flag in flags:
+        groups[(flag.document_id, flag.normalised_span, flag.sentence_fingerprint)].append(flag)
+
+    classified: list[_ClassifiedFlag] = []
+    for (document_id, _, _), group in groups.items():
+        interactions = sorted(
+            (event for flag in group for event in flag.interactions),
+            key=lambda event: event.created_at,
+        )
+        surfaced = any(not flag.suppressed for flag in group) or bool(interactions)
+        if not surfaced:
+            continue
+        state = classify(
+            FlagOutcome(
+                flagged_text=group[0].raw_span,
+                interaction_kinds=tuple(event.kind for event in interactions),
+                final_text=content_by_document[document_id],
+            )
+        )
+        classified.append(_ClassifiedFlag(document_id, group[0].category, state))
+    return classified
+
+
+def _decision_pattern_for(
+    category: BiasCategory, classified: list[_ClassifiedFlag], threshold: float
+) -> DecisionPattern | None:
+    """One category's adoption-rate pattern, tested against the other categories; None if noise."""
+    in_category = [item for item in classified if item.category is category]
+    others = [item for item in classified if item.category is not category]
+    adopted = sum(1 for item in in_category if item.state in ADOPTION_STATES)
+    other_adopted = sum(1 for item in others if item.state in ADOPTION_STATES)
+    table = Contingency(
+        adopted, other_adopted, len(in_category) - adopted, len(others) - other_adopted
+    )
+    p_value = fisher_p_value(table)
+    if not is_significant(p_value, threshold):
+        return None
+    return DecisionPattern(
+        category=category,
+        adopted_count=adopted,
+        rejected_count=len(in_category) - adopted,
+        total_count=len(in_category),
+        adoption_rate=adopted / len(in_category),
+        p_value=p_value,
+        document_ids=tuple(sorted({item.document_id for item in in_category}, key=str)),
+    )
+
+
+def aggregate_decision_patterns(
+    session: Session, *, owner_id: uuid.UUID, threshold: float
+) -> list[DecisionPattern]:
+    """Surface bias categories the manager adopts or rejects at a significantly different rate.
+
+    Args:
+        session: The active database session.
+        owner_id: The manager whose decisions are analysed (their data only, never HR's).
+        threshold: The Fisher's-exact significance bar; categories at or above it are withheld.
+
+    Returns:
+        Significant decision patterns sorted by ascending p-value then category.
+    """
+    content_by_document = _submitted_content_by_document(session, owner_id)
+    if not content_by_document:
+        return []
+    classified = _classified_flags(session, content_by_document)
+    categories = {item.category for item in classified}
+    patterns = [
+        pattern
+        for category in categories
+        if (pattern := _decision_pattern_for(category, classified, threshold)) is not None
+    ]
+    patterns.sort(key=lambda pattern: (pattern.p_value, pattern.category.value))
+    return patterns
+
+
+def aggregate_patterns(session: Session, *, owner_id: uuid.UUID, threshold: float) -> PatternReport:
+    """The Module's public face: both gated pattern families for one manager's dashboard."""
+    return PatternReport(
+        writing_patterns=tuple(
+            aggregate_writing_patterns(session, owner_id=owner_id, threshold=threshold)
+        ),
+        decision_patterns=tuple(
+            aggregate_decision_patterns(session, owner_id=owner_id, threshold=threshold)
+        ),
+    )
