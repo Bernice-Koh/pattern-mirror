@@ -19,6 +19,15 @@ import {
 
 const rootRoute = createRootRoute()
 
+/** Search for opening a specific document in its surface from My Documents (#69). */
+interface DocSearch {
+  doc?: string
+}
+
+function validateDocSearch(search: Record<string, unknown>): DocSearch {
+  return { doc: typeof search.doc === 'string' ? search.doc : undefined }
+}
+
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/',
@@ -50,6 +59,7 @@ const jdStudioRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/jd-studio',
   beforeLoad: requireRole('manager'),
+  validateSearch: validateDocSearch,
   component: JdStudio,
 })
 
@@ -57,6 +67,7 @@ const feedbackCheckpointRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/feedback-checkpoint',
   beforeLoad: requireRole('manager'),
+  validateSearch: validateDocSearch,
   component: FeedbackCheckpoint,
 })
 
@@ -71,6 +82,7 @@ const promotionWriteupRoute = createRoute({
   getParentRoute: () => appRoute,
   path: '/promotion-writeup',
   beforeLoad: requireRole('manager'),
+  validateSearch: validateDocSearch,
   component: PromotionWriteup,
 })
 
