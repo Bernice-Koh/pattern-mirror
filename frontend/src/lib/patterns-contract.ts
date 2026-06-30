@@ -38,7 +38,16 @@ export interface DecisionPattern {
   document_ids: string[]
 }
 
+/** The manager's overall adoption rate within one calendar month (the "over time" view, #68). */
+export interface AdoptionTrendPoint {
+  period: string
+  adopted_count: number
+  total_count: number
+  adoption_rate: number
+}
+
 export interface PatternReport {
   writing_patterns: WritingPattern[]
   decision_patterns: DecisionPattern[]
+  adoption_trend: AdoptionTrendPoint[]
 }
