@@ -44,9 +44,10 @@ export function useFlagStream(
     controllerRef.current = controller
 
     async function consume(): Promise<void> {
-      // Reset here, not in the effect body, so a fresh run clears the prior flags
-      // without a synchronous setState cascade.
-      setContextualFlags([])
+      // Hold the prior run's flags until this one delivers its replacement, so a
+      // re-run triggered by accepting a single flag never blinks the panel empty.
+      const next: CitedFlag[] = []
+      let replaced = false
       try {
         for await (const event of streamAnalysis(
           { document_id: docId, content: debouncedText },
@@ -56,9 +57,13 @@ export function useFlagStream(
             event.type === 'flag' &&
             event.flag.source_stage === 'contextual'
           ) {
-            setContextualFlags((prev) => [...prev, event.flag])
+            next.push(event.flag)
+            setContextualFlags([...next])
+            replaced = true
           }
         }
+        // A clean run that found nothing still clears the now-stale set.
+        if (!replaced) setContextualFlags([])
       } catch {
         // A superseded, failed, or aborted run keeps the last painted flags; the next
         // pass replaces them. Surfacing nothing here matches Layer 1's keep-last policy.

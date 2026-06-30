@@ -46,13 +46,20 @@ vi.mock('@/components/jd-studio/jd-editor', async () => {
   const React = await import('react')
   return {
     JdEditor: React.forwardRef(function MockEditor(
-      props: { onFlagsChange?: (flags: unknown[]) => void },
+      props: {
+        onFlagsChange?: (flags: unknown[]) => void
+        resolvedFlagIds?: ReadonlySet<string>
+      },
       ref,
     ) {
       React.useImperativeHandle(ref, () => ({ applyRecommendation: vi.fn() }))
       const onFlagsChange = props.onFlagsChange
       React.useEffect(() => onFlagsChange?.([FLAG]), [onFlagsChange])
-      return null
+      // Surface the resolved-id set so the panel↔editor wiring is assertable.
+      return React.createElement('div', {
+        'data-testid': 'resolved-ids',
+        'data-ids': [...(props.resolvedFlagIds ?? [])].join(','),
+      })
     }),
   }
 })
@@ -82,6 +89,21 @@ describe('JdStudio', () => {
       ),
     )
     await waitFor(() => expect(screen.queryByText('young rockstar')).toBeNull())
+  })
+
+  it('marks an applied flag resolved so its underline clears at once', async () => {
+    render(<JdStudio />, { wrapper })
+    expect(screen.getByTestId('resolved-ids')).toHaveAttribute('data-ids', '')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    // Resolved before the re-scan returns, so the editor drops the underline immediately.
+    await waitFor(() =>
+      expect(screen.getByTestId('resolved-ids')).toHaveAttribute(
+        'data-ids',
+        'f1',
+      ),
+    )
   })
 
   it('logs a dismiss and greys the card with an Undo', async () => {

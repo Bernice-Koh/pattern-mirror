@@ -33,8 +33,9 @@ export function JdStudio() {
   const editorRef = useRef<JdEditorHandle>(null)
   const { resolutions, accept, dismiss, undo } = useFlagInteractions()
 
-  // Apply writes the chosen phrasing into the document, then logs the acceptance; the
-  // text change re-runs analysis, which clears the now-resolved underline.
+  // Apply writes the chosen phrasing into the document and logs the acceptance; marking the
+  // flag resolved clears its underline at once, while the re-scan the edit triggers drops it
+  // from the flag set.
   function applyRecommendation(flag: CitedFlag, suggestion: string) {
     editorRef.current?.applyRecommendation(flag, suggestion)
     accept(flag.id, suggestion)
@@ -46,15 +47,10 @@ export function JdStudio() {
     [flags, resolutions],
   )
 
-  // Dismissed flags lose their inline underline at once (their span is unchanged); accepted
-  // ones clear via the re-analysis their text edit triggers, so only dismissals go here.
-  const dismissedFlagIds = useMemo(
-    () =>
-      new Set(
-        [...resolutions.entries()]
-          .filter(([, resolution]) => resolution === 'dismissed')
-          .map(([id]) => id),
-      ),
+  // Accepted and dismissed flags both lose their inline underline the instant they're
+  // resolved, so an applied change never stays underlined while the re-scan runs.
+  const resolvedFlagIds = useMemo(
+    () => new Set(resolutions.keys()),
     [resolutions],
   )
 
@@ -104,7 +100,7 @@ export function JdStudio() {
               onFlagsChange={setFlags}
               onApplyRecommendation={applyRecommendation}
               onDismissFlag={(flag) => dismiss(flag.id)}
-              dismissedFlagIds={dismissedFlagIds}
+              resolvedFlagIds={resolvedFlagIds}
             />
           </Editor>
         </div>

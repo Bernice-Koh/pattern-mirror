@@ -72,10 +72,10 @@ export interface JdEditorProps {
   onApplyRecommendation?: (flag: CitedFlag, suggestion: string) => void
   /** Dismiss a flag from the hover popover. */
   onDismissFlag?: (flag: CitedFlag) => void
-  /** Flag ids the manager has dismissed; their underline and hover popover clear at once
-   *  (the span is unchanged, so re-analysis alone would re-surface them). Accepted flags are
-   *  not listed here — applying rewrites the text, so re-analysis clears those. */
-  dismissedFlagIds?: ReadonlySet<string>
+  /** Flag ids the manager has resolved (accepted or dismissed); their underline and hover
+   *  popover clear at once, rather than lingering until the re-scan an accept's text edit
+   *  triggers settles a few seconds later. */
+  resolvedFlagIds?: ReadonlySet<string>
 }
 
 const POPOVER_CLOSE_MS = 100
@@ -98,7 +98,7 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
       onFlagsChange,
       onApplyRecommendation,
       onDismissFlag,
-      dismissedFlagIds,
+      resolvedFlagIds,
     },
     ref,
   ) {
@@ -149,11 +149,11 @@ export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
       [data, contextualFlags],
     )
 
-    // Dismissed flags stay in `flags` (the panel still lists them, greyed) but drop out of
-    // the editor's underlines and hover map at once, since their span is unchanged.
+    // Resolved flags drop out of the editor's underlines and hover map at once; the panel
+    // keeps dismissed ones (greyed, with Undo), but a stale underline never lingers here.
     const decoratedFlags = useMemo(
-      () => flags.filter((flag) => !dismissedFlagIds?.has(flag.id)),
-      [flags, dismissedFlagIds],
+      () => flags.filter((flag) => !resolvedFlagIds?.has(flag.id)),
+      [flags, resolvedFlagIds],
     )
 
     useEffect(() => {
