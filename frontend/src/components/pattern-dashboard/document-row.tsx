@@ -44,7 +44,7 @@ interface DocumentRowProps {
 }
 
 /** One row in My Documents; opens the document in its surface on click (#69). */
-export function DocumentRow({ document }: DocumentRowProps) {
+export function DocumentRow({ document }: Readonly<DocumentRowProps>) {
   const navigate = useNavigate()
   const title = document.title ?? UNTITLED[document.doc_type]
 

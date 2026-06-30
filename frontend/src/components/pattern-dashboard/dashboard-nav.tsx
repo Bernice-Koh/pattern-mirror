@@ -21,7 +21,10 @@ interface DashboardNavProps {
 
 /** The Pattern Dashboard's left rail: the manager's identity and its sub-views (#69).
  *  Distinct from the app-level SurfaceNav — this navigates within the dashboard. */
-export function DashboardNav({ active, onSelect }: DashboardNavProps) {
+export function DashboardNav({
+  active,
+  onSelect,
+}: Readonly<DashboardNavProps>) {
   const { user } = useAuth()
 
   return (

@@ -26,9 +26,7 @@ const PLACEHOLDERS: Record<
 
 function PlaceholderView({
   view,
-}: {
-  view: Exclude<DashboardView, 'documents'>
-}) {
+}: Readonly<{ view: Exclude<DashboardView, 'documents'> }>) {
   const { title, body } = PLACEHOLDERS[view]
   return (
     <div className="max-w-170">

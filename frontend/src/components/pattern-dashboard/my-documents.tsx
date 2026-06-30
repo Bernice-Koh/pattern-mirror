@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { DocType } from '@/lib/analyze-contract'
 import { listDocuments } from '@/lib/documents-client'
@@ -23,6 +23,27 @@ export function MyDocuments() {
   const visible = documents.filter(
     (document) => document.doc_type === activeType,
   )
+
+  let listing: ReactNode
+  if (isLoading) {
+    listing = (
+      <p className="px-4 py-6 font-sans text-label text-ink-faint">Loading…</p>
+    )
+  } else if (visible.length === 0) {
+    listing = (
+      <p className="px-4 py-6 font-sans text-label text-ink-faint">
+        Nothing here yet.
+      </p>
+    )
+  } else {
+    listing = (
+      <div className="divide-y divide-border">
+        {visible.map((document) => (
+          <DocumentRow key={document.id} document={document} />
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="max-w-225">
@@ -55,21 +76,7 @@ export function MyDocuments() {
       </div>
 
       <div className="overflow-hidden rounded-card bg-surface shadow-ring-card">
-        {isLoading ? (
-          <p className="px-4 py-6 font-sans text-label text-ink-faint">
-            Loading…
-          </p>
-        ) : visible.length === 0 ? (
-          <p className="px-4 py-6 font-sans text-label text-ink-faint">
-            Nothing here yet.
-          </p>
-        ) : (
-          <div className="divide-y divide-border">
-            {visible.map((document) => (
-              <DocumentRow key={document.id} document={document} />
-            ))}
-          </div>
-        )}
+        {listing}
       </div>
 
       <p className="mt-4 font-sans text-meta text-ink-faint">
