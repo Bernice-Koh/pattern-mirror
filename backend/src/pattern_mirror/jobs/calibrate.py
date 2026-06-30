@@ -32,6 +32,7 @@ from pattern_mirror.services.calibration import (
     Prediction,
     evaluate,
 )
+from pattern_mirror.services.calibration_runs import per_stage_metrics, record_run
 
 _REGION_CODE = "SG"
 _log = structlog.get_logger("pattern_mirror.jobs.calibrate")
@@ -134,22 +135,13 @@ def run_calibration(
 
 
 def report_fields(report: CalibrationReport) -> dict[str, Any]:
-    """Flatten a report into structured log fields (and the shape #71's dashboard will consume)."""
+    """Flatten a report into structured log fields (and the shape #71's dashboard consumes)."""
     return {
         "agreement": report.agreement,
         "ece": report.ece,
         "brier": report.brier,
         "scored_count": report.scored_count,
-        "stages": {
-            stage.value: {
-                "precision": metrics.precision,
-                "recall": metrics.recall,
-                "true_positives": metrics.true_positives,
-                "false_positives": metrics.false_positives,
-                "false_negatives": metrics.false_negatives,
-            }
-            for stage, metrics in report.per_stage.items()
-        },
+        "stages": per_stage_metrics(report),
     }
 
 
@@ -168,6 +160,10 @@ def main() -> None:
             contextual_client=client,
             judge_client=client,
         )
+        # run_calibration rolls back each document's scratch rows, so nothing else is pending;
+        # persist the measurement as the HR Portal's time-series point (§11) before closing.
+        record_run(session, report)
+        session.commit()
     finally:
         session.rollback()
         session.close()

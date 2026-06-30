@@ -52,6 +52,17 @@ def test_all_foundation_tables_exist(migrated_engine: Engine) -> None:
     assert _ALL_FOUNDATION_TABLES.issubset(tables)
 
 
+def test_calibration_runs_table_carries_the_dashboard_metrics(migrated_engine: Engine) -> None:
+    inspector = inspect(migrated_engine)
+    columns = {col["name"]: col for col in inspector.get_columns("calibration_runs")}
+
+    expected = {"agreement", "ece", "brier", "scored_count", "per_stage", "created_at"}
+    assert expected.issubset(columns)
+    assert columns["agreement"]["nullable"] is True
+    assert columns["scored_count"]["nullable"] is False
+    assert columns["per_stage"]["nullable"] is False
+
+
 def test_flags_carry_provenance_reference_scores_and_suppressed(migrated_engine: Engine) -> None:
     columns = {col["name"]: col for col in inspect(migrated_engine).get_columns("flags")}
 
