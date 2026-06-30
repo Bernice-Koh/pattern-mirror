@@ -21,7 +21,9 @@ from pattern_mirror.models.enums import (
 )
 from pattern_mirror.models.identity import Subject, User
 from pattern_mirror.services.pattern_aggregator import (
+    AdoptionTrendPoint,
     PatternMode,
+    aggregate_adoption_trend,
     aggregate_decision_patterns,
     aggregate_patterns,
     aggregate_writing_patterns,
@@ -265,6 +267,7 @@ def _decided_flag(
     kind: FlagInteractionKind | None,
     present_in_final: bool,
     suppressed: bool = False,
+    submitted_at: datetime | None = None,
 ) -> Document:
     """A submitted document carrying one flag the manager accepted, dismissed, or ignored."""
     final_text = f"a notably {span} contributor" if present_in_final else "a balanced contributor"
@@ -273,6 +276,7 @@ def _decided_flag(
         doc_type=DocType.feedback,
         status=DocumentStatus.submitted,
         submitted_content=final_text,
+        submitted_at=submitted_at,
     )
     session.add(document)
     session.flush()
@@ -365,3 +369,71 @@ def test_aggregate_patterns_returns_both_families(db_session: Session) -> None:
 
     assert {doc.id for doc in male_docs} == set(report.writing_patterns[0].document_ids)
     assert report.decision_patterns == ()
+    assert report.adoption_trend == ()  # the feedback notes were never submitted
+
+
+def test_adoption_trend_buckets_by_submission_month(db_session: Session) -> None:
+    owner = _manager(db_session, "trend")
+    january = datetime(2026, 1, 15, tzinfo=UTC)
+    february = datetime(2026, 2, 10, tzinfo=UTC)
+    # January: one accepted, one dismissed-and-kept -> 1 of 2 adopted.
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.gender,
+        span="sharp-jan-a",
+        kind=FlagInteractionKind.accept,
+        present_in_final=False,
+        submitted_at=january,
+    )
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.gender,
+        span="sharp-jan-b",
+        kind=FlagInteractionKind.dismiss,
+        present_in_final=True,
+        submitted_at=january,
+    )
+    # February: both accepted -> 2 of 2 adopted.
+    for span in ("sharp-feb-a", "sharp-feb-b"):
+        _decided_flag(
+            db_session,
+            owner,
+            category=BiasCategory.gender,
+            span=span,
+            kind=FlagInteractionKind.accept,
+            present_in_final=False,
+            submitted_at=february,
+        )
+
+    trend = aggregate_adoption_trend(db_session, owner_id=owner.id)
+
+    assert trend == [
+        AdoptionTrendPoint(period="2026-01", adopted_count=1, total_count=2, adoption_rate=0.5),
+        AdoptionTrendPoint(period="2026-02", adopted_count=2, total_count=2, adoption_rate=1.0),
+    ]
+
+
+def test_adoption_trend_empty_without_submissions(db_session: Session) -> None:
+    owner = _manager(db_session, "trend-empty")
+    _feedback(db_session, owner, gender="male", terms=[_SHARP])  # a draft run, never submitted
+
+    assert aggregate_adoption_trend(db_session, owner_id=owner.id) == []
+
+
+def test_adoption_trend_excludes_documents_without_a_submission_timestamp(
+    db_session: Session,
+) -> None:
+    owner = _manager(db_session, "trend-no-timestamp")
+    _decided_flag(
+        db_session,
+        owner,
+        category=BiasCategory.gender,
+        span="undated",
+        kind=FlagInteractionKind.accept,
+        present_in_final=False,
+        submitted_at=None,
+    )
+
+    assert aggregate_adoption_trend(db_session, owner_id=owner.id) == []
