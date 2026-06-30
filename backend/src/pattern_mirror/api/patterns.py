@@ -19,6 +19,7 @@ from pattern_mirror.db.session import get_session
 from pattern_mirror.models.enums import BiasCategory
 from pattern_mirror.models.identity import User
 from pattern_mirror.services.pattern_aggregator import (
+    AdoptionTrendPoint,
     DecisionPattern,
     PatternMode,
     PatternReport,
@@ -55,11 +56,21 @@ class DecisionPatternResponse(BaseModel):
     document_ids: list[uuid.UUID]
 
 
+class AdoptionTrendPointResponse(BaseModel):
+    """The manager's overall adoption rate within one calendar month (the "over time" view)."""
+
+    period: str
+    adopted_count: int
+    total_count: int
+    adoption_rate: float
+
+
 class PatternReportResponse(BaseModel):
-    """The dashboard payload: both gated pattern families for the current manager."""
+    """The dashboard payload: both gated pattern families plus the adoption trend."""
 
     writing_patterns: list[WritingPatternResponse]
     decision_patterns: list[DecisionPatternResponse]
+    adoption_trend: list[AdoptionTrendPointResponse]
 
 
 def _serialise_writing(pattern: WritingPattern) -> WritingPatternResponse:
@@ -88,11 +99,21 @@ def _serialise_decision(pattern: DecisionPattern) -> DecisionPatternResponse:
     )
 
 
+def _serialise_trend(point: AdoptionTrendPoint) -> AdoptionTrendPointResponse:
+    return AdoptionTrendPointResponse(
+        period=point.period,
+        adopted_count=point.adopted_count,
+        total_count=point.total_count,
+        adoption_rate=point.adoption_rate,
+    )
+
+
 def _serialise_report(report: PatternReport) -> PatternReportResponse:
     """Map the aggregator's value objects into the response model (no internal types leak out)."""
     return PatternReportResponse(
         writing_patterns=[_serialise_writing(pattern) for pattern in report.writing_patterns],
         decision_patterns=[_serialise_decision(pattern) for pattern in report.decision_patterns],
+        adoption_trend=[_serialise_trend(point) for point in report.adoption_trend],
     )
 
 
