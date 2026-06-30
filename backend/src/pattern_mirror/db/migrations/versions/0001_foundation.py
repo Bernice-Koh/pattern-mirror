@@ -6,9 +6,9 @@ audit log. Seeds the SEA region lookup (only SG carries a lexicon in MVP).
 
 Native enum types are created once up front and referenced with
 ``create_type=False`` so a type shared by two tables (``bias_category`` on both
-``flags`` and ``dictionaries``) is not created twice. ``dictionaries.origin_candidate_id``
-and ``agent_runs.candidate_id`` are intentionally deferred to migration 0005,
-which adds the ``dictionary_candidates`` table they reference.
+``flags`` and ``dictionaries``) is not created twice. The dictionary-growth
+provenance columns (``dictionaries.source_proposal_id``, ``agent_runs.proposal_id``)
+are deferred to migration 0010, which adds the growth tables they reference.
 
 Revision ID: 0001_foundation
 Revises:
