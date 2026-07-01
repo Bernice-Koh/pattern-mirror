@@ -9,6 +9,7 @@ import { FeedbackCheckpoint } from '@/pages/feedback-checkpoint'
 import { PatternDashboard } from '@/pages/pattern-dashboard'
 import { PromotionWriteup } from '@/pages/promotion-writeup'
 import { HrPortal } from '@/pages/hr-portal'
+import { HrDictionaryReview } from '@/pages/hr-dictionary-review'
 import { Login } from '@/pages/login'
 import { HrLogin } from '@/pages/hr-login'
 import {
@@ -93,6 +94,25 @@ const hrPortalRoute = createRoute({
   component: HrPortal,
 })
 
+/** Search for opening a specific pending addition in the review modal from the HR Portal card. */
+interface ReviewSearch {
+  addition?: string
+}
+
+function validateReviewSearch(search: Record<string, unknown>): ReviewSearch {
+  return {
+    addition: typeof search.addition === 'string' ? search.addition : undefined,
+  }
+}
+
+const hrDictionaryReviewRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: '/hr-portal/dictionary-review',
+  beforeLoad: requireRole('hr'),
+  validateSearch: validateReviewSearch,
+  component: HrDictionaryReview,
+})
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
@@ -103,6 +123,7 @@ const routeTree = rootRoute.addChildren([
     patternDashboardRoute,
     promotionWriteupRoute,
     hrPortalRoute,
+    hrDictionaryReviewRoute,
   ]),
 ])
 

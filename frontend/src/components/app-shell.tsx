@@ -10,9 +10,15 @@ export function AppShell() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const surface = useRouterState({
-    select: (state) =>
-      SURFACES.find((s) => s.path === state.location.pathname)?.label ??
-      'JD Studio',
+    select: (state) => {
+      const { pathname } = state.location
+      // Longest-prefix match so sub-pages (e.g. /hr-portal/dictionary-review) keep their
+      // surface's label rather than falling through to the default.
+      const match = [...SURFACES]
+        .filter((s) => pathname === s.path || pathname.startsWith(`${s.path}/`))
+        .sort((a, b) => b.path.length - a.path.length)[0]
+      return match?.label ?? 'JD Studio'
+    },
   })
 
   async function handleLogout() {

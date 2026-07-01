@@ -7,10 +7,7 @@ import type {
 import { HrHeadline } from '@/components/hr-portal/hr-headline'
 import { EffectivenessTrends } from '@/components/hr-portal/effectiveness-trends'
 import { DictionaryHealthPanel } from '@/components/hr-portal/dictionary-health-panel'
-import {
-  ReportCard,
-  ReportEmptyState,
-} from '@/components/hr-portal/report-card'
+import { ReviewQueuePreview } from '@/components/hr-portal/review-queue-preview'
 
 const EMPTY_EFFECTIVENESS: EffectivenessReport = {
   adoption_over_time: [],
@@ -57,12 +54,7 @@ export function HrPortal() {
           <EffectivenessTrends report={report} />
 
           <div className="flex flex-col gap-5.5">
-            <ReportCard
-              title="Words to review"
-              caption="New bias-coded phrases waiting for review"
-            >
-              <ReportEmptyState message="The review queue arrives with dictionary growth" />
-            </ReportCard>
+            <ReviewQueuePreview />
 
             <DictionaryHealthPanel
               report={dictionaryHealth.data ?? EMPTY_DICTIONARY_HEALTH}
