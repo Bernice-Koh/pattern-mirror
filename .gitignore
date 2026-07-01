@@ -49,5 +49,8 @@ scratch/
 # --- local issue snapshot (working reference, not committed) ---
 ISSUES.md
 
+# --- local documentation plan (working reference, not committed) ---
+docs/DOCUMENTATION_PLAN.md
+
 # --- design handoff (read-only reference, never committed) ---
 pattern-mirror-design-system/
