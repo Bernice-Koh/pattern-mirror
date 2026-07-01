@@ -27,9 +27,7 @@ def upgrade() -> None:
     op.add_column(
         "pending_dictionary_additions", sa.Column("explanation", sa.Text(), nullable=False)
     )
-    op.add_column(
-        "pending_dictionary_additions", sa.Column("decided_by", sa.Uuid(), nullable=True)
-    )
+    op.add_column("pending_dictionary_additions", sa.Column("decided_by", sa.Uuid(), nullable=True))
     op.add_column(
         "pending_dictionary_additions",
         sa.Column("decided_at", sa.TIMESTAMP(timezone=True), nullable=True),

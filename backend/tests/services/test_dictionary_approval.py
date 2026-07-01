@@ -128,9 +128,7 @@ def test_reject_adds_no_row_and_records_the_decision(db_session: Session) -> Non
     assert addition.status is DictionaryAdditionStatus.rejected
     assert addition.decided_by == actor.id
     assert addition.decided_at is not None
-    rows = db_session.scalars(
-        select(Dictionary).where(Dictionary.lemma_key == _LEMMA_KEY)
-    ).all()
+    rows = db_session.scalars(select(Dictionary).where(Dictionary.lemma_key == _LEMMA_KEY)).all()
     assert rows == []
 
 

@@ -130,9 +130,12 @@ def test_reject_marks_addition_and_adds_no_entry(
     assert response.status_code == 200
     assert response.json()["status"] == DictionaryAdditionStatus.rejected.value
     assert response.json()["decided_at"] is not None
-    assert db_session.scalars(
-        select(Dictionary).where(Dictionary.lemma_key == "growth phrase three")
-    ).all() == []
+    assert (
+        db_session.scalars(
+            select(Dictionary).where(Dictionary.lemma_key == "growth phrase three")
+        ).all()
+        == []
+    )
 
 
 def test_defer_marks_addition_deferred(hr_client: TestClient, db_session: Session) -> None:
