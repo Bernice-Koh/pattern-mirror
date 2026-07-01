@@ -22,6 +22,7 @@ export default defineConfig({
       '/flags': 'http://localhost:8000',
       '/patterns': 'http://localhost:8000',
       '/hr': 'http://localhost:8000',
+      '/growth': 'http://localhost:8000',
     },
   },
   test: {
