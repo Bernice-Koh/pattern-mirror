@@ -20,6 +20,7 @@ from pattern_mirror.api import (
     analyze,
     auth,
     documents,
+    growth,
     health,
     hr,
     interactions,
@@ -130,4 +131,5 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(patterns.router)
     app.include_router(hr.router)
+    app.include_router(growth.router)
     return app
