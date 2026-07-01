@@ -62,6 +62,14 @@ class Settings(BaseSettings):
     # The Judge Agent's model (design spec: Haiku 4.5 for confidence scoring).
     judge_model: str = "claude-haiku-4-5"
 
+    # Per-agent models for the four-agent dictionary-growth review (ADR 0012). The
+    # argument- and citation-recall roles run on Sonnet; the scope classification is a
+    # narrow call that Haiku handles. Kept in config so the tiering is tunable per ADR.
+    growth_proposer_model: str = "claude-sonnet-4-6"
+    growth_skeptic_model: str = "claude-sonnet-4-6"
+    growth_categorizer_model: str = "claude-haiku-4-5"
+    growth_citation_model: str = "claude-sonnet-4-6"
+
     # The Judge's gate, on the calibrated score (>= passes, ADR-0008). In config so it
     # is tunable per environment without a code change; a flag whose calibrated confidence
     # falls below it is logged but not surfaced and gets no recommendation.
