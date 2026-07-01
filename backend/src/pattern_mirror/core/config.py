@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     # suppressed so no firm-level figure can re-identify an individual manager.
     hr_min_cell_size: int = 3
 
+    # The Dictionary Growth trigger's recurrence floor (#88): a general, uncatalogued phrase
+    # surfaces as a growth candidate once the Contextual Pass has proposed it across at least this
+    # many distinct documents (and managers). The trigger's job is only cheap fluke rejection —
+    # since each phrase is reviewed once, a floor of two documents keeps that one review off n=1
+    # evidence. Generality is the Categorizer's call (#89), not a cross-manager count, so the
+    # manager axis defaults to 1; both knobs stay so production can raise the bar as volume grows.
+    growth_recurrence_min_managers: int = 1
+    growth_recurrence_min_documents: int = 2
+
 
 @lru_cache
 def get_settings() -> Settings:
