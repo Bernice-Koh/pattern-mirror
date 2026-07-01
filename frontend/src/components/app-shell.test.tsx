@@ -5,12 +5,15 @@ import { clearStoredAuth, getStoredAuth, setStoredAuth } from '@/lib/auth-token'
 import type { StoredAuth } from '@/lib/auth-token'
 import { AppShell } from './app-shell'
 
-const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
+const { navigate, routerState } = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  routerState: { pathname: '/jd-studio' },
+}))
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => navigate,
   useRouterState: ({ select }: { select: (state: unknown) => unknown }) =>
-    select({ location: { pathname: '/jd-studio' } }),
+    select({ location: { pathname: routerState.pathname } }),
   Outlet: () => null,
 }))
 
@@ -39,6 +42,15 @@ describe('AppShell', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     clearStoredAuth()
+    routerState.pathname = '/jd-studio'
+  })
+
+  it('keeps a surface label on its sub-pages', () => {
+    routerState.pathname = '/hr-portal/dictionary-review'
+    setStoredAuth(AUTH)
+    renderShell()
+
+    expect(screen.getByText(/HR Portal/)).toBeInTheDocument()
   })
 
   it('shows the signed-in user initials', () => {

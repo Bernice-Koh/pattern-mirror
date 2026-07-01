@@ -54,6 +54,7 @@ class PendingAdditionResponse(BaseModel):
     """One queued addition awaiting an HR decision."""
 
     id: uuid.UUID
+    proposal_id: uuid.UUID
     phrase: str
     proposed_category: BiasCategory
     explanation: str
@@ -115,6 +116,7 @@ class ProposalAuditResponse(BaseModel):
 def _serialise_addition(addition: PendingDictionaryAddition) -> PendingAdditionResponse:
     return PendingAdditionResponse(
         id=addition.id,
+        proposal_id=addition.proposal_id,
         phrase=addition.phrase,
         proposed_category=addition.proposed_category,
         explanation=addition.explanation,
