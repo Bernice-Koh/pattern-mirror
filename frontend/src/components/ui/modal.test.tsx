@@ -50,4 +50,79 @@ describe('Modal', () => {
     fireEvent.mouseDown(panel.parentElement as HTMLElement)
     expect(onClose).toHaveBeenCalledOnce()
   })
+
+  it('traps Tab from the last focusable back to the first', () => {
+    render(
+      <Modal open onClose={() => {}} title="Review">
+        <button type="button">First</button>
+        <button type="button">Last</button>
+      </Modal>,
+    )
+    const first = screen.getByRole('button', { name: 'First' })
+    const last = screen.getByRole('button', { name: 'Last' })
+
+    last.focus()
+    fireEvent.keyDown(last, { key: 'Tab' })
+    expect(document.activeElement).toBe(first)
+  })
+
+  it('traps Shift+Tab from the first focusable to the last', () => {
+    render(
+      <Modal open onClose={() => {}} title="Review">
+        <button type="button">First</button>
+        <button type="button">Last</button>
+      </Modal>,
+    )
+    const first = screen.getByRole('button', { name: 'First' })
+    const last = screen.getByRole('button', { name: 'Last' })
+
+    first.focus()
+    fireEvent.keyDown(first, { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(last)
+  })
+
+  it('leaves focus alone for a Tab in the middle of the order', () => {
+    render(
+      <Modal open onClose={() => {}} title="Review">
+        <button type="button">First</button>
+        <button type="button">Last</button>
+      </Modal>,
+    )
+    const first = screen.getByRole('button', { name: 'First' })
+
+    first.focus()
+    fireEvent.keyDown(first, { key: 'Tab' })
+    expect(document.activeElement).toBe(first)
+  })
+
+  it('ignores Tab when there is nothing focusable', () => {
+    const onClose = vi.fn()
+    render(
+      <Modal open onClose={onClose} title="Review">
+        <p>Body</p>
+      </Modal>,
+    )
+    fireEvent.keyDown(document.body, { key: 'Tab' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('restores focus to the trigger when it closes', () => {
+    const trigger = document.createElement('button')
+    document.body.appendChild(trigger)
+    trigger.focus()
+
+    const { rerender } = render(
+      <Modal open onClose={() => {}} title="Review">
+        <button type="button">Inside</button>
+      </Modal>,
+    )
+    rerender(
+      <Modal open={false} onClose={() => {}} title="Review">
+        <button type="button">Inside</button>
+      </Modal>,
+    )
+
+    expect(document.activeElement).toBe(trigger)
+    trigger.remove()
+  })
 })
