@@ -11,8 +11,10 @@ from sqlalchemy.orm import Session
 from pattern_mirror.api.deps import get_current_principal
 from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
+from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.dictionary import Dictionary
 from pattern_mirror.models.enums import (
+    AgentName,
     BiasCategory,
     CitationSourceType,
     DictionaryAdditionStatus,
@@ -86,6 +88,25 @@ def _seed_pending(db_session: Session, *, lemma_key: str) -> PendingDictionaryAd
     db_session.add(addition)
     db_session.flush()
     return addition
+
+
+def _record_agents(db_session: Session, proposal_id: uuid.UUID) -> None:
+    for agent_name in (
+        AgentName.proposer,
+        AgentName.skeptic,
+        AgentName.categorizer,
+        AgentName.citation,
+    ):
+        db_session.add(
+            AgentRun(
+                agent_name=agent_name,
+                model="claude-test",
+                input={"phrase": "a phrase"},
+                output={"reasoning": f"{agent_name.value} argument."},
+                proposal_id=proposal_id,
+            )
+        )
+    db_session.flush()
 
 
 def test_list_returns_pending_additions_with_their_citation(
@@ -172,3 +193,33 @@ def test_manager_role_is_forbidden(manager_client: TestClient, db_session: Sessi
 
 def test_unauthenticated_is_rejected(anon_client: TestClient) -> None:
     assert anon_client.get("/growth/pending-additions").status_code == 401
+
+
+def test_audit_reconstructs_the_approved_chain(hr_client: TestClient, db_session: Session) -> None:
+    addition = _seed_pending(db_session, lemma_key="growth phrase seven")
+    _record_agents(db_session, addition.proposal_id)
+    hr_client.post(f"/growth/pending-additions/{addition.id}/approve")
+
+    response = hr_client.get(f"/growth/proposals/{addition.proposal_id}/audit")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["advanced"] is True
+    assert [arg["agent_name"] for arg in body["arguments"]] == [
+        AgentName.proposer.value,
+        AgentName.skeptic.value,
+        AgentName.categorizer.value,
+        AgentName.citation.value,
+    ]
+    assert body["citation"]["reference"] == "TAFEP-2021-3"
+    assert body["decision"]["status"] == DictionaryAdditionStatus.approved.value
+    assert body["live_entry"]["term"] == "growth phrase seven"
+
+
+def test_audit_unknown_proposal_is_not_found(hr_client: TestClient) -> None:
+    assert hr_client.get(f"/growth/proposals/{uuid.uuid4()}/audit").status_code == 404
+
+
+def test_audit_is_hr_gated(manager_client: TestClient, db_session: Session) -> None:
+    addition = _seed_pending(db_session, lemma_key="growth phrase eight")
+    assert manager_client.get(f"/growth/proposals/{addition.proposal_id}/audit").status_code == 403
