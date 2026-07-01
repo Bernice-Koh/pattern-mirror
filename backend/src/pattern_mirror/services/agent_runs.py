@@ -28,6 +28,7 @@ def record_agent_run(
     document_id: uuid.UUID | None = None,
     flag_id: uuid.UUID | None = None,
     analysis_run_id: uuid.UUID | None = None,
+    proposal_id: uuid.UUID | None = None,
     prompt_tokens: int | None = None,
     completion_tokens: int | None = None,
     cost_usd: Decimal | None = None,
@@ -48,6 +49,7 @@ def record_agent_run(
         document_id=document_id,
         flag_id=flag_id,
         analysis_run_id=analysis_run_id,
+        proposal_id=proposal_id,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         cost_usd=cost_usd,
@@ -63,5 +65,6 @@ def record_agent_run(
         document_id=str(document_id) if document_id else None,
         flag_id=str(flag_id) if flag_id else None,
         analysis_run_id=str(analysis_run_id) if analysis_run_id else None,
+        proposal_id=str(proposal_id) if proposal_id else None,
     )
     return run
