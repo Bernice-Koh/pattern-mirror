@@ -11,6 +11,26 @@ from pattern_mirror.engine.lemmatiser import lemmatise
 _SENTENCE_TERMINATORS = ".!?"
 
 
+def slice_sentence(text: str, start: int, end: int) -> str:
+    """Return the sentence (between the nearest ``.!?`` terminators) containing ``text[start:end]``.
+
+    Shared by the fingerprint below and the growth trigger's excerpt building (#88) so the two
+    agree on what "the sentence around a span" is.
+
+    Args:
+        text: The full source document.
+        start: Start offset of the flagged span.
+        end: End offset (exclusive) of the flagged span.
+
+    Returns:
+        The containing sentence, trailing terminator included, stripped of surrounding whitespace.
+    """
+    left = max((text.rfind(term, 0, start) for term in _SENTENCE_TERMINATORS), default=-1)
+    right_ends = [pos for term in _SENTENCE_TERMINATORS if (pos := text.find(term, end)) != -1]
+    right = min(right_ends) + 1 if right_ends else len(text)
+    return text[left + 1 : right].strip()
+
+
 def compute_sentence_fingerprint(text: str, start: int, end: int) -> str:
     """Return the lemma-bag fingerprint of the sentence containing ``text[start:end]``.
 
@@ -26,8 +46,5 @@ def compute_sentence_fingerprint(text: str, start: int, end: int) -> str:
     Returns:
         A 64-character hex SHA-256 digest of the sentence's sorted lemma bag.
     """
-    left = max((text.rfind(term, 0, start) for term in _SENTENCE_TERMINATORS), default=-1)
-    right_ends = [pos for term in _SENTENCE_TERMINATORS if (pos := text.find(term, end)) != -1]
-    right = min(right_ends) + 1 if right_ends else len(text)
-    lemma_bag = " ".join(sorted(lemmatise(text[left + 1 : right])))
+    lemma_bag = " ".join(sorted(lemmatise(slice_sentence(text, start, end))))
     return hashlib.sha256(lemma_bag.encode("utf-8")).hexdigest()

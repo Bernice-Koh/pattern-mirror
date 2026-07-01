@@ -1,11 +1,23 @@
 """Sentence fingerprints: a lemma bag, so casing, punctuation, inflection, and order wash out."""
 
-from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
+from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint, slice_sentence
 
 
 def _span(text: str, phrase: str) -> tuple[int, int]:
     start = text.index(phrase)
     return start, start + len(phrase)
+
+
+def test_slice_sentence_returns_the_containing_sentence() -> None:
+    text = "Hello there. We want a digital native. Apply now."
+
+    assert slice_sentence(text, *_span(text, "digital native")) == "We want a digital native."
+
+
+def test_slice_sentence_falls_back_to_the_whole_text_without_terminators() -> None:
+    text = "we want a digital native"
+
+    assert slice_sentence(text, *_span(text, "digital native")) == text
 
 
 def test_same_sentence_yields_same_fingerprint_regardless_of_position() -> None:
