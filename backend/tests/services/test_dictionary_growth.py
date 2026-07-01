@@ -129,6 +129,7 @@ def test_advance_writes_proposal_agent_runs_citation_and_pending(db_session: Ses
     assert pending is not None
     assert pending.proposed_category is BiasCategory.gender
     assert pending.proposal_id == outcome.proposal_id
+    assert pending.explanation == "for"
 
 
 def test_blocked_candidate_logs_arguments_but_creates_no_pending(db_session: Session) -> None:
