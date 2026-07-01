@@ -9,7 +9,7 @@ deterministic hit); reject and defer only record the decision. Thin handlers ove
 
 import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -18,14 +18,21 @@ from sqlalchemy.orm import Session
 
 from pattern_mirror.api.deps import get_current_principal, require_hr
 from pattern_mirror.db.session import get_session
-from pattern_mirror.models.enums import BiasCategory, CitationSourceType, DictionaryAdditionStatus
+from pattern_mirror.models.enums import (
+    AgentName,
+    BiasCategory,
+    CitationSourceType,
+    DictionaryAdditionStatus,
+)
 from pattern_mirror.models.growth import PendingDictionaryAddition
+from pattern_mirror.models.reference import Citation
 from pattern_mirror.services.auth import SessionPrincipal
 from pattern_mirror.services.dictionary_approval import (
     approve_addition,
     defer_addition,
     reject_addition,
 )
+from pattern_mirror.services.growth_audit import ProposalAudit, reconstruct_proposal_audit
 
 router = APIRouter(prefix="/growth", tags=["growth"], dependencies=[Depends(require_hr)])
 
@@ -67,8 +74,45 @@ class DictionaryEntryResponse(BaseModel):
     citation_id: uuid.UUID
 
 
+class AgentArgumentResponse(BaseModel):
+    """One growth agent's logged argument, as the audit replays it."""
+
+    agent_name: AgentName
+    model: str
+    output: dict[str, Any]
+
+
+class DecisionResponse(BaseModel):
+    """The HR decision on an addition that reached the queue."""
+
+    status: DictionaryAdditionStatus
+    decided_by: uuid.UUID | None
+    decided_at: datetime | None
+
+
+class LiveEntryResponse(BaseModel):
+    """The live dictionary row an approval produced, if the chain got that far."""
+
+    id: uuid.UUID
+    term: str
+    active: bool
+
+
+class ProposalAuditResponse(BaseModel):
+    """A growth proposal's full provenance chain: arguments, citation, decision, live row."""
+
+    proposal_id: uuid.UUID
+    phrase: str
+    lemma_key: str
+    proposed_at: datetime
+    advanced: bool
+    arguments: list[AgentArgumentResponse]
+    citation: CitationSummary | None
+    decision: DecisionResponse | None
+    live_entry: LiveEntryResponse | None
+
+
 def _serialise_addition(addition: PendingDictionaryAddition) -> PendingAdditionResponse:
-    citation = addition.proposal.citation
     return PendingAdditionResponse(
         id=addition.id,
         phrase=addition.phrase,
@@ -77,15 +121,49 @@ def _serialise_addition(addition: PendingDictionaryAddition) -> PendingAdditionR
         status=addition.status,
         created_at=addition.created_at,
         decided_at=addition.decided_at,
-        citation=(
-            CitationSummary(
-                source_type=citation.source_type,
-                title=citation.title,
-                reference=citation.reference,
-                publication_year=citation.publication_year,
-                finding=citation.finding,
+        citation=_serialise_citation(addition.proposal.citation),
+    )
+
+
+def _serialise_citation(citation: Citation | None) -> CitationSummary | None:
+    if citation is None:
+        return None
+    return CitationSummary(
+        source_type=citation.source_type,
+        title=citation.title,
+        reference=citation.reference,
+        publication_year=citation.publication_year,
+        finding=citation.finding,
+    )
+
+
+def _serialise_audit(audit: ProposalAudit) -> ProposalAuditResponse:
+    proposal = audit.proposal
+    decision = audit.decision
+    entry = audit.live_entry
+    return ProposalAuditResponse(
+        proposal_id=proposal.id,
+        phrase=proposal.phrase,
+        lemma_key=proposal.lemma_key,
+        proposed_at=proposal.created_at,
+        advanced=decision is not None,
+        arguments=[
+            AgentArgumentResponse(agent_name=run.agent_name, model=run.model, output=run.output)
+            for run in audit.arguments
+        ],
+        citation=_serialise_citation(proposal.citation),
+        decision=(
+            DecisionResponse(
+                status=decision.status,
+                decided_by=decision.decided_by,
+                decided_at=decision.decided_at,
             )
-            if citation is not None
+            if decision is not None
+            else None
+        ),
+        live_entry=(
+            LiveEntryResponse(id=entry.id, term=entry.term, active=entry.active)
+            if entry is not None
             else None
         ),
     )
@@ -151,3 +229,16 @@ def defer(
     """Record the deferral; the addition stays open to a later decision."""
     addition = defer_addition(session, addition_id=addition_id, actor_id=principal.user_id)
     return _serialise_addition(addition)
+
+
+@router.get(
+    "/proposals/{proposal_id}/audit",
+    summary="Reconstruct a growth proposal's full provenance chain (HR)",
+)
+def proposal_audit(
+    proposal_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+) -> ProposalAuditResponse:
+    """Return the trigger, four agent arguments, citation, decision, and live row for a proposal."""
+    audit = reconstruct_proposal_audit(session, proposal_id)
+    return _serialise_audit(audit)
