@@ -112,7 +112,7 @@ def _record_agents(db_session: Session, proposal_id: uuid.UUID) -> None:
 def test_list_returns_pending_additions_with_their_citation(
     hr_client: TestClient, db_session: Session
 ) -> None:
-    _seed_pending(db_session, lemma_key="growth phrase one")
+    addition = _seed_pending(db_session, lemma_key="growth phrase one")
 
     response = hr_client.get("/growth/pending-additions")
 
@@ -120,6 +120,7 @@ def test_list_returns_pending_additions_with_their_citation(
     body = response.json()
     assert len(body) == 1
     assert body[0]["phrase"] == "growth phrase one"
+    assert body[0]["proposal_id"] == str(addition.proposal_id)
     assert body[0]["status"] == DictionaryAdditionStatus.pending.value
     assert body[0]["citation"]["reference"] == "TAFEP-2021-3"
 
