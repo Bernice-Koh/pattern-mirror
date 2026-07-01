@@ -1,9 +1,11 @@
-"""The 3-of-4 gate over the four growth Agents' verdicts (design spec §3).
+"""The advancement gate over the four growth Agents' verdicts (design spec §3).
 
-A phrase advances to the pending-additions queue only when at least three of the four Agents
-favour it AND the Citation agent found support — a missing citation blocks dictionary inclusion
-regardless of the other votes. This module is pure: it reads the parsed Agent results and
-decides; persistence lives in ``services.dictionary_growth``.
+A phrase advances to the pending-additions queue only when both eligibility gates pass — a
+citation was found AND the Categorizer scoped it ``general`` — and at least one debater (the
+Proposer or the Skeptic) supports inclusion. A missing citation or a role-specific scope each
+block dictionary inclusion regardless of the other votes: a role-specific phrase stays a
+context-only flag, and an uncited one breaks the "every entry cites a source" promise (ADR 0006).
+This module is pure; persistence lives in ``services.dictionary_growth``.
 """
 
 from dataclasses import dataclass
@@ -15,8 +17,6 @@ from pattern_mirror.engine.growth.agents import (
     SkepticResult,
 )
 from pattern_mirror.models.enums import BiasCategory, FlagScope
-
-GROWTH_AGREEMENT_THRESHOLD = 3
 
 
 @dataclass(frozen=True)
@@ -50,11 +50,11 @@ def evaluate_gate(
     categorizer: CategorizerResult,
     citation: CitationResult,
 ) -> GrowthVerdict:
-    """Apply the 3-of-4 gate with the citation-required override to the four Agent results.
+    """Decide whether the phrase advances, applying the two hard gates and the debater vote.
 
-    A vote in favour is: the Proposer supports inclusion, the Skeptic's honest verdict supports
-    it, the Categorizer scopes it 'general', and the Citation agent found support. The phrase
-    advances only when at least three of these hold and a citation was found.
+    A phrase advances only when a citation was found, the Categorizer scoped it ``general``, and
+    at least one of the Proposer or Skeptic supports inclusion. ``votes_in_favour`` tallies how
+    many of the four favoured it, for the audit trail — it does not itself decide the gate.
 
     Args:
         proposer: The Proposer's case and chosen category.
@@ -67,15 +67,13 @@ def evaluate_gate(
         citation was found.
     """
     has_citation = _citation_found(citation)
+    is_general = categorizer.scope is FlagScope.general
     votes_in_favour = sum(
-        (
-            proposer.supports_inclusion,
-            skeptic.supports_inclusion,
-            categorizer.scope is FlagScope.general,
-            has_citation,
-        )
+        (proposer.supports_inclusion, skeptic.supports_inclusion, is_general, has_citation)
     )
-    advance = has_citation and votes_in_favour >= GROWTH_AGREEMENT_THRESHOLD
+    advance = (
+        has_citation and is_general and (proposer.supports_inclusion or skeptic.supports_inclusion)
+    )
     return GrowthVerdict(
         advance=advance,
         votes_in_favour=votes_in_favour,

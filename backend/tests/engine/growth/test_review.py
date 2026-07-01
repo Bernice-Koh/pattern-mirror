@@ -1,4 +1,4 @@
-"""The 3-of-4 gate: agreement counting and the citation-required override.
+"""The advancement gate: two hard eligibility gates plus the debater vote.
 
 Pure logic over the four parsed Agent results — no client, no database.
 """
@@ -53,21 +53,12 @@ def test_all_four_in_favour_advances() -> None:
     assert verdict.has_citation is True
 
 
-def test_three_of_four_advances() -> None:
-    # Skeptic dissents; Proposer, Categorizer, and Citation carry it to three.
+def test_one_debater_plus_both_gates_advances() -> None:
+    # Skeptic dissents, but citation + general + the Proposer clear the gate.
     verdict = evaluate_gate(_proposer(), _skeptic(supports=False), _categorizer(), _citation())
 
     assert verdict.advance is True
     assert verdict.votes_in_favour == 3
-
-
-def test_two_of_four_does_not_advance() -> None:
-    verdict = evaluate_gate(
-        _proposer(), _skeptic(supports=False), _categorizer(FlagScope.role_specific), _citation()
-    )
-
-    assert verdict.advance is False
-    assert verdict.votes_in_favour == 2
 
 
 def test_no_citation_blocks_even_when_the_other_three_agree() -> None:
@@ -77,6 +68,27 @@ def test_no_citation_blocks_even_when_the_other_three_agree() -> None:
     assert verdict.advance is False
     assert verdict.votes_in_favour == 3
     assert verdict.has_citation is False
+
+
+def test_role_specific_blocks_even_when_the_other_three_agree() -> None:
+    # Both debaters support and a citation was found, but role-specific never enters the dictionary.
+    verdict = evaluate_gate(
+        _proposer(), _skeptic(), _categorizer(FlagScope.role_specific), _citation()
+    )
+
+    assert verdict.advance is False
+    assert verdict.votes_in_favour == 3
+    assert verdict.scope is FlagScope.role_specific
+
+
+def test_both_debaters_dissenting_blocks_despite_both_gates() -> None:
+    # Citation and general both hold, but neither the advocate nor the skeptic backs it.
+    verdict = evaluate_gate(
+        _proposer(supports=False), _skeptic(supports=False), _categorizer(), _citation()
+    )
+
+    assert verdict.advance is False
+    assert verdict.votes_in_favour == 2
 
 
 def test_proposed_category_comes_from_the_proposer() -> None:

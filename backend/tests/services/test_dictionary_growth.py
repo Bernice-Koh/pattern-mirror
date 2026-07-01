@@ -131,8 +131,8 @@ def test_advance_writes_proposal_agent_runs_citation_and_pending(db_session: Ses
     assert pending.proposal_id == outcome.proposal_id
 
 
-def test_sub_threshold_logs_arguments_but_creates_no_pending(db_session: Session) -> None:
-    # Only Proposer and Citation favour it: two votes, below the gate.
+def test_blocked_candidate_logs_arguments_but_creates_no_pending(db_session: Session) -> None:
+    # Skeptic dissents and the Categorizer scopes it role-specific: the general gate fails.
     client = _FakeGrowthClient(_results(skeptic_supports=False, scope=FlagScope.role_specific))
 
     outcome = review_candidate(
