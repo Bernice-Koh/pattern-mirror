@@ -79,3 +79,17 @@ this ADR settles the shapes, the gate, and the model choices #89 needs to build 
 - **Citation/scope as soft votes** (count toward agreement but don't block) — rejected: either
   would let an uncited or role-specific phrase advance on the others' strength, breaking ADR 0006
   or leaking a context-only flag into the dictionary.
+
+## Addendum — the trigger's recurrence bar (#88, 2026-07-02)
+
+This ADR calls the trigger (#88) the volume gate that makes four calls per candidate affordable.
+Settling that bar: it is an **occurrence floor, not a cross-manager count**. Recurrence is an
+*economic* filter, not a correctness one — the four agents here already judge the two things a
+recurrence count proxies for (the Categorizer judges generality; the Proposer/Skeptic/Citation
+trio judges merit), so requiring a phrase to appear across *multiple managers* before review just
+duplicates that judgement and adds false negatives (a genuine general term one well-read manager
+used). The one scale-independent reason to require *any* recurrence is that the trigger dedupes —
+each phrase is reviewed once — so firing on the first sighting would spend that single review on
+n=1 evidence with no revisit. A floor of two documents removes that risk at negligible cost.
+Defaults are therefore `growth_recurrence_min_managers=1`, `growth_recurrence_min_documents=2`;
+both stay in config so a cross-manager bar can be re-imposed at production volume.
