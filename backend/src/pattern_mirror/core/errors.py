@@ -52,6 +52,32 @@ class FlagNotFoundError(PatternMirrorError):
         self.flag_id = flag_id
 
 
+class PendingAdditionNotFoundError(PatternMirrorError):
+    """A requested pending dictionary addition does not exist."""
+
+    def __init__(self, addition_id: object) -> None:
+        super().__init__(f"Pending addition not found: {addition_id}")
+        self.addition_id = addition_id
+
+
+class AdditionAlreadyDecidedError(PatternMirrorError):
+    """A pending addition has already been approved or rejected and cannot be decided again."""
+
+    def __init__(self, addition_id: object, status: object) -> None:
+        super().__init__(f"Pending addition {addition_id} already decided: {status}")
+        self.addition_id = addition_id
+        self.status = status
+
+
+class DictionaryEntryExistsError(PatternMirrorError):
+    """An active dictionary entry already exists for this region, phrase, and category."""
+
+    def __init__(self, lemma_key: object, category: object) -> None:
+        super().__init__(f"Dictionary entry already exists: {lemma_key} ({category})")
+        self.lemma_key = lemma_key
+        self.category = category
+
+
 class JudgeVerdictCountError(PatternMirrorError):
     """The Judge returned a different number of verdicts than the flags it was asked to score."""
 
