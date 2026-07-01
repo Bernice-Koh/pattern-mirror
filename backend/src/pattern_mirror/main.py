@@ -20,6 +20,7 @@ from pattern_mirror.api import (
     analyze,
     auth,
     documents,
+    growth,
     health,
     hr,
     interactions,
@@ -28,12 +29,15 @@ from pattern_mirror.api import (
 )
 from pattern_mirror.core.config import get_settings
 from pattern_mirror.core.errors import (
+    AdditionAlreadyDecidedError,
+    DictionaryEntryExistsError,
     DocumentNotFoundError,
     FlagNotFoundError,
     InvalidCredentialsError,
     NotAuthenticatedError,
     NotAuthorizedError,
     PatternMirrorError,
+    PendingAdditionNotFoundError,
 )
 from pattern_mirror.core.logging import configure_logging
 from pattern_mirror.core.middleware import CorrelationIdMiddleware
@@ -85,6 +89,14 @@ def _handle_forbidden(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+def _handle_conflict(request: Request, exc: Exception) -> JSONResponse:
+    # A decision already taken, or a duplicate entry: a state conflict (409), not a server fault.
+    return JSONResponse(
+        status_code=409,
+        content={"error": type(exc).__name__, "detail": str(exc)},
+    )
+
+
 def create_app() -> FastAPI:
     """Build and configure the FastAPI application.
 
@@ -104,9 +116,12 @@ def create_app() -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
     app.add_exception_handler(DocumentNotFoundError, _handle_not_found)
     app.add_exception_handler(FlagNotFoundError, _handle_not_found)
+    app.add_exception_handler(PendingAdditionNotFoundError, _handle_not_found)
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
     app.add_exception_handler(NotAuthenticatedError, _handle_unauthorized)
     app.add_exception_handler(NotAuthorizedError, _handle_forbidden)
+    app.add_exception_handler(AdditionAlreadyDecidedError, _handle_conflict)
+    app.add_exception_handler(DictionaryEntryExistsError, _handle_conflict)
     app.add_exception_handler(PatternMirrorError, _handle_domain_error)
     app.include_router(health.router)
     app.include_router(auth.router)
@@ -116,4 +131,5 @@ def create_app() -> FastAPI:
     app.include_router(documents.router)
     app.include_router(patterns.router)
     app.include_router(hr.router)
+    app.include_router(growth.router)
     return app

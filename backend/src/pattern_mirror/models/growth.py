@@ -8,9 +8,10 @@ reasoning attaches via ``agent_runs.proposal_id``. When 3-of-4 agree, a
 """
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, Text
+from sqlalchemy import TIMESTAMP, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from pattern_mirror.db.base import Base
@@ -44,7 +45,13 @@ class DictionaryProposal(CreatedAtMixin, Base):
 
 
 class PendingDictionaryAddition(CreatedAtMixin, Base):
-    """A proposal that cleared the 3-of-4 gate, awaiting bulk HR approval."""
+    """A proposal that cleared the 3-of-4 gate, awaiting bulk HR approval.
+
+    ``proposed_category`` and ``explanation`` stage the eventual ``dictionaries`` row: the
+    category the four agents settled on and the rationale a manager will read on the flag.
+    ``decided_by`` / ``decided_at`` record who resolved the queue item and when — the audit
+    #91 reads for reject/defer, which create no dictionary row of their own.
+    """
 
     __tablename__ = "pending_dictionary_additions"
 
@@ -53,9 +60,12 @@ class PendingDictionaryAddition(CreatedAtMixin, Base):
     phrase: Mapped[str] = mapped_column(Text)
     lemma_key: Mapped[str] = mapped_column(String)
     proposed_category: Mapped[BiasCategory] = mapped_column(bias_category_enum)
+    explanation: Mapped[str] = mapped_column(Text)
     status: Mapped[DictionaryAdditionStatus] = mapped_column(
         dictionary_addition_status_enum,
         server_default=DictionaryAdditionStatus.pending.value,
     )
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
     proposal: Mapped["DictionaryProposal"] = relationship(back_populates="pending_addition")

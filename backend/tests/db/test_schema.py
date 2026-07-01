@@ -216,6 +216,7 @@ def test_orm_round_trip_links_the_growth_graph(db_session: Session) -> None:
         phrase="culture fit",
         lemma_key="culture fit",
         proposed_category=BiasCategory.age,
+        explanation="Youth-coded phrasing that deters older candidates.",
     )
     db_session.add_all([approver, *arguments, queued])
     db_session.flush()  # populate server-generated ids before the column-only FK is set
