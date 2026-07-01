@@ -1,4 +1,4 @@
-# 12. Four agents review a growth candidate; 3-of-4 with a citation advances it
+# 12. Four agents review a growth candidate; two hard gates plus a debater vote advance it
 
 - Status: Accepted
 - Date: 2026-07-01
@@ -27,12 +27,16 @@ this ADR settles the shapes, the gate, and the model choices #89 needs to build 
     (stays a context-only flag, never a dictionary row).
   - **Citation** — searches for academic/regulatory support and returns the source, or reports
     none found.
-- **The gate is 3-of-4 in favour.** A vote in favour is: Proposer supports, Skeptic's verdict
-  supports, Categorizer scopes `general`, Citation found support.
-- **A found citation is a hard requirement.** A phrase advances only when a citation was found
-  *and* at least three Agents favour it — a missing citation blocks dictionary inclusion even
-  when the other three agree. This keeps the "every dictionary entry cites a verifiable source"
-  promise (ADR 0006) intact for grown entries.
+- **The gate is two hard eligibility gates plus a debater vote.** A phrase advances only when
+  **both** the Citation agent found support **and** the Categorizer scoped it `general`, and at
+  least one of the two debaters (Proposer or Skeptic) supports inclusion.
+- **The Citation and Categorizer verdicts are vetoes, not mere votes.** A missing citation breaks
+  the "every dictionary entry cites a verifiable source" promise (ADR 0006); a `role_specific`
+  scope means "keep as a context-only flag, never a dictionary entry" (design spec §3). Either
+  one blocks inclusion regardless of the other votes — so the two eligibility agents decide
+  whether the phrase is a dictionary candidate at all, and the Proposer/Skeptic pair is the
+  genuine debate over it. A `votes_in_favour` tally across all four is still logged for the audit
+  trail, but it does not itself decide the gate.
 - **Every proposal is logged, advancing or not.** A `dictionary_proposals` row and four
   `agent_runs` are written for every candidate, so a rejection is as reconstructable as an
   advance. A `pending_dictionary_additions` row exists iff the phrase advanced.
@@ -47,8 +51,8 @@ this ADR settles the shapes, the gate, and the model choices #89 needs to build 
 
 - **+** The decision carries its own reasoning: four arguments plus a citation, all logged, so
   HR's monthly review (#90) reads a case rather than a label, and #91 can reconstruct the chain.
-- **+** Dissent is structural — the Skeptic exists to fail weak candidates, and the citation
-  requirement stops uncited phrases from ever reaching the dictionary.
+- **+** Dissent is structural — the Skeptic exists to fail weak candidates, and the two
+  eligibility gates stop uncited *or* role-specific phrases from ever reaching the dictionary.
 - **+** The mixed model tiering spends Sonnet tokens only where reasoning quality matters; the
   cheap classification runs on Haiku. Volume is low (a monthly batch), so cost is modest either
   way.
@@ -58,14 +62,20 @@ this ADR settles the shapes, the gate, and the model choices #89 needs to build 
 - **−** Four calls per candidate is more expensive than one classifier. Accepted: the trigger
   (#88) gates volume to recurring phrases, and the audit defensibility is the point of the
   feature.
-- **−** The 3-of-4 count treats all four votes as equal weight. Accepted as the spec's rule; if
-  it proves too lax or strict, the threshold is a one-line change (`GROWTH_AGREEMENT_THRESHOLD`).
+- **−** The gate departs from the design spec's literal "3-of-4 agreement" wording, which would
+  let a `role_specific` phrase advance on the other three votes. That was judged a defect: it
+  contradicts the Categorizer's own "do not add to dictionary" semantics, so the two eligibility
+  agents were promoted to vetoes. The spec and issue #89 were updated to match.
 
 ## Alternatives considered
 
 - **A single classifier Agent** — one call labels the candidate. Rejected: no dissent, no scoped
   judgement, no citation, and a black-box decision that fails the audit-defensibility goal.
 - **Unanimous (4-of-4) gate** — rejected as too strict; a lone Skeptic dissent would kill genuine
-  candidates, and the citation-required override already guards the one dimension that must hold.
-- **Citation as a soft vote** (counts toward the three but doesn't block) — rejected: it would let
-  an uncited phrase advance on the strength of the other three, breaking ADR 0006 for grown rows.
+  candidates, whereas the eligibility gates already guard the two dimensions that must hold.
+- **The spec's literal 3-of-4 count** (all four equal, citation the only veto) — rejected: it
+  lets a `role_specific` phrase advance on Proposer + Skeptic + Citation, contradicting the
+  Categorizer's purpose. Promoting `general` to a veto alongside citation fixes this.
+- **Citation/scope as soft votes** (count toward agreement but don't block) — rejected: either
+  would let an uncited or role-specific phrase advance on the others' strength, breaking ADR 0006
+  or leaking a context-only flag into the dictionary.
