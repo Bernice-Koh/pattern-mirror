@@ -60,6 +60,14 @@ class PendingAdditionNotFoundError(PatternMirrorError):
         self.addition_id = addition_id
 
 
+class ProposalNotFoundError(PatternMirrorError):
+    """A requested dictionary-growth proposal does not exist."""
+
+    def __init__(self, proposal_id: object) -> None:
+        super().__init__(f"Proposal not found: {proposal_id}")
+        self.proposal_id = proposal_id
+
+
 class AdditionAlreadyDecidedError(PatternMirrorError):
     """A pending addition has already been approved or rejected and cannot be decided again."""
 

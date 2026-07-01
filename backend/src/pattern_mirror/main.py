@@ -38,6 +38,7 @@ from pattern_mirror.core.errors import (
     NotAuthorizedError,
     PatternMirrorError,
     PendingAdditionNotFoundError,
+    ProposalNotFoundError,
 )
 from pattern_mirror.core.logging import configure_logging
 from pattern_mirror.core.middleware import CorrelationIdMiddleware
@@ -117,6 +118,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(DocumentNotFoundError, _handle_not_found)
     app.add_exception_handler(FlagNotFoundError, _handle_not_found)
     app.add_exception_handler(PendingAdditionNotFoundError, _handle_not_found)
+    app.add_exception_handler(ProposalNotFoundError, _handle_not_found)
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
     app.add_exception_handler(NotAuthenticatedError, _handle_unauthorized)
     app.add_exception_handler(NotAuthorizedError, _handle_forbidden)
