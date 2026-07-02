@@ -17,12 +17,14 @@ from pattern_mirror.core.config import Settings
 from pattern_mirror.engine.adjudicator import RejectionReason
 from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
+from pattern_mirror.engine.drift import DriftCriterionFinding, DriftResult
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
 from pattern_mirror.engine.orchestrator import (
     EngineNode,
     _adjudicator_node,
     _build_contextual_node,
+    _build_drift_node,
     _build_judge_node,
     _build_recommendations_node,
     _build_suppression_node,
@@ -33,6 +35,7 @@ from pattern_mirror.engine.orchestrator import (
 from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
 from pattern_mirror.engine.state import (
     DictionaryVerdict,
+    DriftReference,
     EngineState,
     JudgeScore,
     StateUpdate,
@@ -534,3 +537,140 @@ def test_recommendations_node_degrades_when_the_agent_fails(db_session: Session)
         ).first()
         is None
     )
+
+
+class _FakeDriftClient:
+    """Returns a fixed DriftResult and fixed usage; the Anthropic call is never made."""
+
+    def __init__(self, result: DriftResult) -> None:
+        self._result = result
+        self._completion = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=400, output_tokens=120)
+        )
+
+    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+        return self._result, self._completion
+
+
+@pytest.mark.db
+def test_drift_node_writes_findings_and_logs_the_run(db_session: Session) -> None:
+    document, run = _persisted_document_and_run(db_session)
+    content = "The candidate demonstrated strong leadership on the migration."
+    state = _state(content)
+    state["document_id"] = document.id
+    state["analysis_run_id"] = run.id
+    state["drift_reference"] = DriftReference(reference_text="Requires leadership and mentoring.")
+    client = _FakeDriftClient(
+        DriftResult(
+            findings=[
+                DriftCriterionFinding(
+                    criterion="leadership",
+                    addressed=True,
+                    evidence="demonstrated strong leadership",
+                ),
+                DriftCriterionFinding(criterion="mentoring", addressed=False),
+            ]
+        )
+    )
+    node = _build_drift_node(db_session, client, "claude-sonnet-4-6")
+
+    findings = node(state)["drift_findings"]
+
+    assert [(f.criterion, f.addressed) for f in findings] == [
+        ("leadership", True),
+        ("mentoring", False),
+    ]
+    assert findings[0].evidence == "demonstrated strong leadership"
+    assert content[findings[0].evidence_start : findings[0].evidence_end] == findings[0].evidence
+    assert findings[1].evidence is None
+    agent_run = db_session.scalars(
+        select(AgentRun).where(
+            AgentRun.document_id == document.id, AgentRun.agent_name == AgentName.drift
+        )
+    ).one()
+    assert agent_run.analysis_run_id == run.id
+
+
+@pytest.mark.db
+def test_drift_node_no_ops_without_a_reference(db_session: Session) -> None:
+    state = _state("text")
+    node = _build_drift_node(db_session, _FailingClient(), "claude-sonnet-4-6")
+
+    # The agent would raise if called; an empty update proves the no-reference path skipped it.
+    assert node(state) == {}
+    assert (
+        db_session.scalars(select(AgentRun).where(AgentRun.agent_name == AgentName.drift)).first()
+        is None
+    )
+
+
+@pytest.mark.db
+def test_drift_node_degrades_when_the_agent_fails(db_session: Session) -> None:
+    document, run = _persisted_document_and_run(db_session)
+    state = _state("text")
+    state["document_id"] = document.id
+    state["analysis_run_id"] = run.id
+    state["drift_reference"] = DriftReference(reference_text="Requires leadership.")
+    node = _build_drift_node(db_session, _FailingClient(), "claude-sonnet-4-6")
+
+    with capture_logs() as logs:
+        update = node(state)
+
+    # Non-blocking: the run survives with no findings, and nothing is logged to agent_runs.
+    assert update["drift_findings"] == []
+    assert any(log["event"] == "engine.drift_failed" for log in logs)
+    assert (
+        db_session.scalars(select(AgentRun).where(AgentRun.agent_name == AgentName.drift)).first()
+        is None
+    )
+
+
+def test_drift_stage_runs_after_the_pipeline_when_wired() -> None:
+    graph = build_engine_graph(
+        dictionary_node=_passthrough("dictionary"),
+        contextual_node=_passthrough("contextual"),
+        suppression_node=_passthrough("suppression"),
+        judge_node=_passthrough("judge"),
+        recommendations_node=_passthrough("recommendations"),
+        drift_node=_fake_stage("drift", {"drift_findings": []}),
+    )
+
+    with capture_logs() as logs:
+        graph.invoke(_state("Clean text."))
+
+    stages = [log["stage"] for log in logs if log["event"] == "engine.transition"]
+    assert stages == [
+        "dictionary",
+        "contextual",
+        "adjudicator",
+        "verdict",
+        "suppression",
+        "judge",
+        "recommendations",
+        "drift",
+    ]
+
+
+@pytest.mark.db
+def test_default_graph_runs_the_drift_stage_when_a_client_is_wired(db_session: Session) -> None:
+    document, run = _persisted_document_and_run(db_session)
+    content = "We want a digital native who led the platform migration."
+    client = _FakeDriftClient(
+        DriftResult(
+            findings=[
+                DriftCriterionFinding(
+                    criterion="delivery", addressed=True, evidence="led the platform migration"
+                )
+            ]
+        )
+    )
+    graph = build_default_graph(db_session, drift_client=client)
+    state = _state(content)
+    state["document_id"] = document.id
+    state["analysis_run_id"] = run.id
+    state["drift_reference"] = DriftReference(reference_text="Must deliver platform work.")
+
+    final = graph.invoke(state)
+
+    assert [f.criterion for f in final["drift_findings"]] == ["delivery"]
+    assert final["drift_findings"][0].evidence == "led the platform migration"
