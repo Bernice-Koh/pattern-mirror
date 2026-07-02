@@ -97,6 +97,7 @@ class AgentName(StrEnum):
     contextual_pass = auto()
     judge = auto()
     recommendations = auto()
+    drift = auto()
     proposer = auto()
     skeptic = auto()
     categorizer = auto()

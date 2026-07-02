@@ -30,6 +30,7 @@ from pattern_mirror.engine.dictionary import (
     load_category_citations,
     match_dictionary,
 )
+from pattern_mirror.engine.drift import run_drift, to_drift_findings
 from pattern_mirror.engine.judge import run_judge, to_judge_scores
 from pattern_mirror.engine.llm_agent import StructuredCompletionClient, estimate_cost_usd
 from pattern_mirror.engine.recommendations import (
@@ -80,7 +81,7 @@ def _verdict_node(state: EngineState) -> StateUpdate:
     Runs after the Adjudicator, so every span has resolved offsets to match a verdict against,
     and before the Judge, so cleared flags spend no scoring tokens. Survivors stay on
     ``verified_flags``; the suppressed flags route to their own channel to be persisted but not
-    surfaced (design spec §12, ADR 0010).
+    surfaced.
     """
     survivors, suppressed = apply_verdicts(state["verified_flags"], state["dictionary_verdicts"])
     for flag in suppressed:
@@ -104,7 +105,7 @@ def _build_suppression_node(session: Session) -> EngineNode:
 
     Runs after the Adjudicator, so every flag has resolved offsets, and before the Judge, so
     the Judge and Recommendations spend no tokens on a flag the manager already dismissed
-    (design spec §12). Overwrites ``verified_flags`` with the survivors and routes the
+    . Overwrites ``verified_flags`` with the survivors and routes the
     suppressed flags onto their own channel, to be persisted but not surfaced.
     """
 
@@ -327,6 +328,68 @@ def _build_recommendations_node(
     return node
 
 
+def _build_drift_node(
+    session: Session, client: StructuredCompletionClient, model: str
+) -> EngineNode:
+    """Build the drift node: a Sonnet 4.6 Agent that checks the document against a reference.
+
+    It compares the document against the run's ``drift_reference`` and emits which reference
+    criteria the writing did and did not address. No-ops when no reference is present (the
+    common JD path carries none). Non-blocking: the drift check is advisory and independent of
+    the bias flags, so a failed call degrades to no findings rather than failing the run
+    (CONVENTIONS). Emits ``drift_findings`` and logs the run.
+    """
+
+    def node(state: EngineState) -> StateUpdate:
+        reference = state["drift_reference"]
+        if reference is None:
+            update: StateUpdate = {}
+            log_transition("drift", state["document_id"], update)
+            return update
+
+        try:
+            run = run_drift(
+                client,
+                document_text=state["document_text"],
+                doc_type=state["doc_type"],
+                reference_text=reference.reference_text,
+                model=model,
+            )
+        except Exception as exc:
+            # Non-blocking: drift is advisory, so a failure must not fail the bias run.
+            _log.warning(
+                "engine.drift_failed",
+                document_id=str(state["document_id"]),
+                error=str(exc),
+            )
+            update = {"drift_findings": []}
+            log_transition("drift", state["document_id"], update)
+            return update
+
+        record_agent_run(
+            session,
+            agent_name=AgentName.drift,
+            model=model,
+            input={
+                "doc_type": state["doc_type"].value,
+                "document_text": state["document_text"],
+                "reference_text": reference.reference_text,
+            },
+            output=run.result.model_dump(mode="json"),
+            document_id=state["document_id"],
+            analysis_run_id=state["analysis_run_id"],
+            prompt_tokens=run.prompt_tokens,
+            completion_tokens=run.completion_tokens,
+            cost_usd=estimate_cost_usd(model, run.prompt_tokens, run.completion_tokens),
+            latency_ms=run.latency_ms,
+        )
+        update = {"drift_findings": to_drift_findings(run.result, state["document_text"])}
+        log_transition("drift", state["document_id"], update)
+        return update
+
+    return node
+
+
 def build_engine_graph(
     *,
     dictionary_node: EngineNode,
@@ -334,12 +397,14 @@ def build_engine_graph(
     suppression_node: EngineNode,
     judge_node: EngineNode,
     recommendations_node: EngineNode,
+    drift_node: EngineNode | None = None,
 ) -> CompiledStateGraph[EngineState]:
     """Compile the engine graph from injected nodes; the Adjudicator is fixed.
 
     Every node is injectable except the Adjudicator, which is deterministic and owns the
     verbatim gate, so it is wired in directly. Tests pass fakes; production passes the real
-    dictionary and suppression nodes and the LLM stages via ``build_default_graph``.
+    dictionary and suppression nodes and the LLM stages via ``build_default_graph``. The drift
+    node is optional: when given, it runs as an independent stage after the linear pipeline.
     """
     graph: StateGraph[EngineState] = StateGraph(EngineState)
     nodes: list[tuple[str, EngineNode]] = [
@@ -361,7 +426,16 @@ def build_engine_graph(
     graph.add_edge("verdict", "suppression")
     graph.add_edge("suppression", "judge")
     graph.add_edge("judge", "recommendations")
-    graph.add_edge("recommendations", END)
+    if drift_node is not None:
+        # Drift is independent of the bias flags, but it shares the run's Session, which is not
+        # safe for LangGraph's concurrent branch execution. So it runs as its own stage after the
+        # pipeline rather than a parallel branch — still non-blocking, writing only
+        # ``drift_findings``.
+        graph.add_node("drift", drift_node)  # type: ignore[call-overload]
+        graph.add_edge("recommendations", "drift")
+        graph.add_edge("drift", END)
+    else:
+        graph.add_edge("recommendations", END)
     return graph.compile()
 
 
@@ -371,6 +445,7 @@ def build_default_graph(
     contextual_client: StructuredCompletionClient | None = None,
     judge_client: StructuredCompletionClient | None = None,
     recommendations_client: StructuredCompletionClient | None = None,
+    drift_client: StructuredCompletionClient | None = None,
 ) -> CompiledStateGraph[EngineState]:
     """The production graph: real dictionary + adjudicator, plus the Agent stages when wired.
 
@@ -379,7 +454,8 @@ def build_default_graph(
     ``llm_agent.build_instructor_client``), a test passes a fake, and ``None`` degrades that
     stage — the Contextual Pass to a passthrough (dictionary-only), the Judge to scoring
     nothing (every flag ungated), Recommendations to producing no rewrites. The Judge always
-    runs because it is the persistence point for the streaming path.
+    runs because it is the persistence point for the streaming path. ``drift_client`` appends the
+    independent drift stage; without it the graph is the linear bias pipeline, unchanged.
     """
     settings = get_settings()
 
@@ -404,10 +480,17 @@ def build_default_graph(
     else:
         recommendations_node = _passthrough_node("recommendations")
 
+    drift_node = (
+        _build_drift_node(session, drift_client, settings.analysis_model)
+        if drift_client is not None
+        else None
+    )
+
     return build_engine_graph(
         dictionary_node=dictionary_node,
         contextual_node=contextual_node,
         suppression_node=suppression_node,
         judge_node=judge_node,
         recommendations_node=recommendations_node,
+        drift_node=drift_node,
     )

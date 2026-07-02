@@ -94,6 +94,22 @@ class DriftReference:
     reference_text: str
 
 
+@dataclass(frozen=True)
+class DriftFinding:
+    """Whether one reference criterion is addressed by the document, with its evidence.
+
+    ``evidence`` is a span copied verbatim from the document and its resolved offsets, present
+    only when ``addressed`` and the quote verified against the source; a non-verbatim quote is
+    blanked (``evidence=None``) so a fabricated quote never surfaces, while the verdict stands.
+    """
+
+    criterion: str
+    addressed: bool
+    evidence: str | None
+    evidence_start: int | None
+    evidence_end: int | None
+
+
 class EngineState(TypedDict):
     """The whole working set of one analysis run, as the graph's channel schema.
 
@@ -105,7 +121,8 @@ class EngineState(TypedDict):
     the suppression Module overwrites it again with the un-dismissed subset and fills
     ``dismissal_suppressed_flags``, the Judge replaces ``judge_scores``, and Recommendations
     replaces ``recommendations`` wholesale. ``dictionary_verdicts`` carries the Contextual
-    Pass's rulings forward to the Verdict node. The identity and inputs
+    Pass's rulings forward to the Verdict node. The drift check runs as its own stage, reading
+    ``drift_reference`` and writing ``drift_findings``. The identity and inputs
     (``analysis_run_id``, ``document_id``, ``document_text``, ``doc_type``, ``region_code``)
     are set at init and not changed.
     """
@@ -123,6 +140,7 @@ class EngineState(TypedDict):
     judge_scores: list[JudgeScore]
     recommendations: list[FlagRecommendation]
     drift_reference: DriftReference | None
+    drift_findings: list[DriftFinding]
 
 
 class StateUpdate(TypedDict, total=False):
@@ -140,6 +158,7 @@ class StateUpdate(TypedDict, total=False):
     judge_scores: list[JudgeScore]
     recommendations: list[FlagRecommendation]
     drift_reference: DriftReference | None
+    drift_findings: list[DriftFinding]
 
 
 def initial_state(
@@ -166,6 +185,7 @@ def initial_state(
         judge_scores=[],
         recommendations=[],
         drift_reference=drift_reference,
+        drift_findings=[],
     )
 
 
