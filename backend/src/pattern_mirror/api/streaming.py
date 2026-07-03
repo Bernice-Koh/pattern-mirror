@@ -65,7 +65,8 @@ async def analyze_stream(
     # None when no key is configured, which runs the dictionary-only path. One client drives
     # every Agent stage — the model is chosen per call.
     client = build_instructor_client(get_settings())
-    # Feedback drifts against its JD's criteria; other types resolve to None and run bias-only.
+    # Feedback drifts against its JD's criteria, promotion against its employee's peer feedback;
+    # a JD or an unlinked document resolves to None and runs bias-only.
     drift_reference = resolve_drift_reference(session, document)
 
     def event_source() -> Iterator[bytes]:

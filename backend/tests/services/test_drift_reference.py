@@ -1,7 +1,8 @@
-"""Resolving a document's drift reference from its stored references (#116).
+"""Resolving a document's drift reference from its stored references (#116, #120).
 
-Feedback resolves the criteria of the JD it references; everything else has no reference and
-runs bias-only. All ``db``-marked because the resolver reads persisted documents and criteria.
+Feedback resolves the criteria of the JD it references; promotion resolves its employee's peer
+feedback; anything unlinked has no reference and runs bias-only. All ``db``-marked because the
+resolver reads persisted documents, criteria, and peer feedback.
 """
 
 import uuid
@@ -90,7 +91,43 @@ def test_a_jd_has_no_reference_of_its_own(db_session: Session) -> None:
     assert resolve_drift_reference(db_session, jd) is None
 
 
-def test_promotion_has_no_reference_until_peer_feedback_wiring(db_session: Session) -> None:
+def test_promotion_resolves_its_employees_peer_feedback(db_session: Session) -> None:
+    owner = _manager(db_session)
+    employee = _employee(db_session)
+    for author, position in [("Peer A", 0), ("Peer B", 1)]:
+        db_session.add(
+            PeerFeedback(
+                subject_id=employee.id,
+                author_label=author,
+                strengths="s",
+                development="d",
+                overall="o",
+                position=position,
+            )
+        )
+    promotion = Document(owner_id=owner.id, doc_type=DocType.promotion, subject_id=employee.id)
+    db_session.add(promotion)
+    db_session.flush()
+
+    reference = resolve_drift_reference(db_session, promotion)
+
+    assert reference is not None
+    assert reference.reference_text.startswith("Peer A\n")
+    # Peers are separated so the drift agent reads distinct voices, in stated order.
+    assert "\n\nPeer B\n" in reference.reference_text
+
+
+def test_promotion_without_peer_feedback_has_no_reference(db_session: Session) -> None:
+    owner = _manager(db_session)
+    employee = _employee(db_session)
+    promotion = Document(owner_id=owner.id, doc_type=DocType.promotion, subject_id=employee.id)
+    db_session.add(promotion)
+    db_session.flush()
+
+    assert resolve_drift_reference(db_session, promotion) is None
+
+
+def test_promotion_without_a_subject_has_no_reference(db_session: Session) -> None:
     owner = _manager(db_session)
     promotion = Document(owner_id=owner.id, doc_type=DocType.promotion)
     db_session.add(promotion)
