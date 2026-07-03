@@ -21,13 +21,16 @@ from pattern_mirror.engine.contextual_pass import (
     ContextualPassResult,
     DictionaryFlagReview,
 )
+from pattern_mirror.engine.drift import DriftCriterionFinding, DriftResult
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
 from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
+from pattern_mirror.engine.lemmatiser import lemma_key
 from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
-from pattern_mirror.engine.state import FlagRecommendation
+from pattern_mirror.engine.state import DriftReference, FlagRecommendation
 from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.dictionary import Dictionary
 from pattern_mirror.models.documents import AnalysisRun, Document
+from pattern_mirror.models.drift import DriftFinding, DriftFindingDismissal
 from pattern_mirror.models.engine import Flag, FlagDismissal
 from pattern_mirror.models.enums import (
     AgentName,
@@ -38,6 +41,7 @@ from pattern_mirror.models.enums import (
     FlagScope,
     FlagSourceStage,
     FlagVerdict,
+    ReferenceKind,
 )
 from pattern_mirror.models.identity import User
 from pattern_mirror.services import streaming_analysis
@@ -684,3 +688,140 @@ def test_recommendations_attach_to_a_surfaced_contextual_flag(db_session: Sessio
         )
     ).one()
     assert rec_run.analysis_run_id is not None
+
+
+class _FakeDriftClient:
+    """Deterministic stand-in for the drift client: fixed findings, recorded usage."""
+
+    def __init__(self, result: DriftResult) -> None:
+        self._result = result
+        self._completion = SimpleNamespace(
+            usage=SimpleNamespace(input_tokens=200, output_tokens=80)
+        )
+
+    def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
+        return self._result, self._completion
+
+
+_FEEDBACK_TEXT = "The candidate led the migration and mentored two juniors."
+
+
+def _feedback_document(db_session: Session) -> Document:
+    user = User(
+        external_user_id=f"stream-drift-{uuid.uuid4()}",
+        legal_name="Stream Drift Manager",
+        email=f"{uuid.uuid4()}@example.com",
+    )
+    db_session.add(user)
+    db_session.flush()
+    document = Document(owner_id=user.id, doc_type=DocType.feedback, content=_FEEDBACK_TEXT)
+    db_session.add(document)
+    db_session.flush()
+    return document
+
+
+def test_drift_findings_persist_when_a_reference_is_supplied(db_session: Session) -> None:
+    document = _feedback_document(db_session)
+    drift = _FakeDriftClient(
+        DriftResult(
+            findings=[
+                DriftCriterionFinding(
+                    criterion="leadership", addressed=True, evidence="led the migration"
+                ),
+                DriftCriterionFinding(criterion="stakeholder management", addressed=False),
+            ]
+        )
+    )
+
+    list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            drift_client=drift,
+            drift_reference=DriftReference(
+                reference_text="Show leadership and stakeholder management."
+            ),
+        )
+    )
+
+    findings = {
+        f.criterion: f
+        for f in db_session.scalars(
+            select(DriftFinding).where(DriftFinding.document_id == document.id)
+        ).all()
+    }
+    assert set(findings) == {"leadership", "stakeholder management"}
+    assert findings["leadership"].reference_kind is ReferenceKind.jd_criteria
+    assert findings["leadership"].addressed is True
+    assert findings["leadership"].evidence == "led the migration"
+    assert findings["stakeholder management"].suppressed is False
+
+
+def test_no_drift_stage_persists_nothing_without_a_client(db_session: Session) -> None:
+    document = _feedback_document(db_session)
+
+    list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+        )
+    )
+
+    assert (
+        db_session.scalars(
+            select(DriftFinding).where(DriftFinding.document_id == document.id)
+        ).all()
+        == []
+    )
+
+
+def test_a_prior_drift_dismissal_suppresses_a_matching_criterion(db_session: Session) -> None:
+    document = _feedback_document(db_session)
+    db_session.add(
+        DriftFindingDismissal(
+            document_id=document.id,
+            reference_kind=ReferenceKind.jd_criteria,
+            normalised_criterion=lemma_key("stakeholder management"),
+            active=True,
+        )
+    )
+    db_session.flush()
+    drift = _FakeDriftClient(
+        DriftResult(
+            findings=[
+                DriftCriterionFinding(criterion="stakeholder management", addressed=False),
+                DriftCriterionFinding(
+                    criterion="mentoring", addressed=True, evidence="mentored two juniors"
+                ),
+            ]
+        )
+    )
+
+    list(
+        stream_analysis_events(
+            db_session,
+            document_id=document.id,
+            content=document.content,
+            doc_type=document.doc_type,
+            registry=RunRegistry(),
+            drift_client=drift,
+            drift_reference=DriftReference(reference_text="Mentoring and stakeholder management."),
+        )
+    )
+
+    findings = {
+        f.criterion: f
+        for f in db_session.scalars(
+            select(DriftFinding).where(DriftFinding.document_id == document.id)
+        ).all()
+    }
+    # Log everything, suppress in UI: the dismissed criterion is persisted suppressed.
+    assert findings["stakeholder management"].suppressed is True
+    assert findings["stakeholder management"].suppressed_by_dismissal_id is not None
+    assert findings["mentoring"].suppressed is False
