@@ -36,6 +36,22 @@ class NotAuthorizedError(PatternMirrorError):
         super().__init__("Not authorized.")
 
 
+class BlobNotFoundError(PatternMirrorError):
+    """No blob is stored under the given reference."""
+
+    def __init__(self, ref: object) -> None:
+        super().__init__(f"Blob not found: {ref}")
+        self.ref = ref
+
+
+class ResumeNotFoundError(PatternMirrorError):
+    """The subject has no stored resume, or the caller may not read it."""
+
+    def __init__(self, subject_id: object) -> None:
+        super().__init__(f"Resume not found: {subject_id}")
+        self.subject_id = subject_id
+
+
 class DocumentNotFoundError(PatternMirrorError):
     """A requested document does not exist or is not owned by the current user."""
 
