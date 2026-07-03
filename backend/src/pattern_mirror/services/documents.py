@@ -8,6 +8,7 @@ these functions flush, never commit.
 """
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 from pattern_mirror.core.errors import DocumentNotFoundError
 from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import DocType, DocumentStatus
+from pattern_mirror.services.drift_reference import resolve_jd_criteria
 
 _log = structlog.get_logger("pattern_mirror.services.documents")
 
@@ -64,6 +66,40 @@ def get_draft(session: Session, *, document_id: uuid.UUID, owner_id: uuid.UUID) 
         DocumentNotFoundError: if the document is absent or owned by another user.
     """
     return _owned_document(session, document_id, owner_id)
+
+
+@dataclass(frozen=True)
+class FeedbackContext:
+    """What the Feedback Checkpoint surface shows above the editor: the candidate and role it
+    is about, and the JD criteria the drift check measures the note against."""
+
+    role_title: str | None
+    subject_name: str | None
+    criteria: list[str]
+
+
+def resolve_feedback_context(
+    session: Session, *, document_id: uuid.UUID, owner_id: uuid.UUID
+) -> FeedbackContext:
+    """Return the criteria bar and context chips for a feedback document's surface.
+
+    Criteria resolve through the JD the feedback references (#116); an unlinked feedback returns
+    an empty list and the surface renders bias-only.
+
+    Raises:
+        DocumentNotFoundError: if the document is absent or owned by another user.
+    """
+    document = _owned_document(session, document_id, owner_id)
+    criteria = (
+        resolve_jd_criteria(session, jd_document_id=document.reference_jd_id)
+        if document.reference_jd_id is not None
+        else []
+    )
+    return FeedbackContext(
+        role_title=document.role_title,
+        subject_name=document.subject.legal_name if document.subject is not None else None,
+        criteria=criteria,
+    )
 
 
 def update_draft(

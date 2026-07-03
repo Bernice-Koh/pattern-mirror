@@ -33,6 +33,7 @@ from pattern_mirror.services.documents import (
     create_draft,
     get_draft,
     list_documents,
+    resolve_feedback_context,
     submit_document,
     update_draft,
 )
@@ -111,6 +112,15 @@ def _serialise_document_summary(document: Document) -> DocumentSummaryResponse:
     )
 
 
+class FeedbackContextResponse(BaseModel):
+    """The reference context the Feedback Checkpoint surface renders above the editor:
+    the candidate and role, and the JD criteria the note's drift check is measured against."""
+
+    role_title: str | None
+    subject_name: str | None
+    criteria: list[str]
+
+
 @router.get("/documents", summary="List the current user's documents")
 def list_my_documents(
     session: Annotated[Session, Depends(get_session)],
@@ -141,6 +151,24 @@ def get_document(
     """Return the owner's document so the editor can restore its draft on load."""
     document = get_draft(session, document_id=doc_id, owner_id=current_user.id)
     return _serialise_document(document)
+
+
+@router.get(
+    "/documents/{doc_id}/feedback-context",
+    summary="Read a feedback document's criteria bar and context chips",
+)
+def get_feedback_context(
+    doc_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> FeedbackContextResponse:
+    """Return the candidate, role, and reference JD criteria for the checkpoint surface."""
+    context = resolve_feedback_context(session, document_id=doc_id, owner_id=current_user.id)
+    return FeedbackContextResponse(
+        role_title=context.role_title,
+        subject_name=context.subject_name,
+        criteria=context.criteria,
+    )
 
 
 @router.patch("/documents/{doc_id}", summary="Autosave a draft's text")
