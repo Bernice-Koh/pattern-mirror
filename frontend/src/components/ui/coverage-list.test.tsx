@@ -5,10 +5,16 @@ import { CoverageList } from './coverage-list'
 describe('CoverageList', () => {
   it('renders the title and summary pill', () => {
     render(
-      <CoverageList title="Coverage" summary="3 of 4 not addressed" items={[]} />,
+      <CoverageList
+        title="Coverage"
+        summary="3 of 4 not addressed"
+        items={[]}
+      />,
     )
 
-    expect(screen.getByRole('heading', { name: 'Coverage' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Coverage' }),
+    ).toBeInTheDocument()
     expect(screen.getByText('3 of 4 not addressed')).toBeInTheDocument()
   })
 
@@ -31,7 +37,11 @@ describe('CoverageList', () => {
     render(
       <CoverageList
         items={[
-          { label: 'Mentorship', addressed: false, statusLabel: 'not yet checked' },
+          {
+            label: 'Mentorship',
+            addressed: false,
+            statusLabel: 'not yet checked',
+          },
         ]}
       />,
     )

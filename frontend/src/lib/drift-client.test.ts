@@ -66,7 +66,9 @@ describe('drift-client', () => {
   it('throws DriftError carrying the status on a non-OK response', async () => {
     mockFetch(new Response(null, { status: 404 }))
 
-    await expect(listDriftFindings('missing')).rejects.toBeInstanceOf(DriftError)
+    await expect(listDriftFindings('missing')).rejects.toBeInstanceOf(
+      DriftError,
+    )
     await expect(listDriftFindings('missing')).rejects.toMatchObject({
       status: 404,
     })

@@ -69,7 +69,8 @@ export function CoverageList({
                 item.addressed ? 'text-green-positive' : 'text-ink-faint',
               )}
             >
-              {item.statusLabel ?? (item.addressed ? 'addressed' : 'not addressed')}
+              {item.statusLabel ??
+                (item.addressed ? 'addressed' : 'not addressed')}
             </span>
           </div>
         ))}
