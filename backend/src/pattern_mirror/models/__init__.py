@@ -18,6 +18,7 @@ from pattern_mirror.models.drift import (
 from pattern_mirror.models.engine import Flag, FlagDismissal
 from pattern_mirror.models.growth import DictionaryProposal, PendingDictionaryAddition
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
+from pattern_mirror.models.jd_criteria import JdCriterion
 from pattern_mirror.models.reference import Citation, Region
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "DriftFindingInteraction",
     "Flag",
     "FlagDismissal",
+    "JdCriterion",
     "PendingDictionaryAddition",
     "Region",
     "Subject",
