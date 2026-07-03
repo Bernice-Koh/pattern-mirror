@@ -52,6 +52,14 @@ class FlagNotFoundError(PatternMirrorError):
         self.flag_id = flag_id
 
 
+class DriftFindingNotFoundError(PatternMirrorError):
+    """A requested drift finding does not exist or belongs to another user's document."""
+
+    def __init__(self, finding_id: object) -> None:
+        super().__init__(f"Drift finding not found: {finding_id}")
+        self.finding_id = finding_id
+
+
 class PendingAdditionNotFoundError(PatternMirrorError):
     """A requested pending dictionary addition does not exist."""
 
