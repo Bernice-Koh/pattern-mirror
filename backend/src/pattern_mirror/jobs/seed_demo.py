@@ -120,7 +120,8 @@ def seed_demo_content(
         for subject in session.scalars(select(Subject).where(Subject.external_ref.in_(refs))).all()
     }
     for subject_seed in dataset.subjects:
-        if subject_seed.external_ref not in subjects_by_ref:
+        subject = subjects_by_ref.get(subject_seed.external_ref)
+        if subject is None:
             subject = Subject(
                 subject_type=subject_seed.subject_type,
                 legal_name=subject_seed.legal_name,
@@ -130,13 +131,17 @@ def seed_demo_content(
             )
             session.add(subject)
             session.flush()
+            subjects_by_ref[subject_seed.external_ref] = subject
+        # Backfill the resume for any subject missing one, not only ones created just now, so a
+        # database seeded before resumes existed gets them on the next run (still idempotent once
+        # the ref is set).
+        if subject.resume_blob_ref is None:
             ref = resume_ref(subject.id)
             store.write(
                 ref,
                 render_resume_pdf(name=subject.legal_name, subject_type=subject.subject_type.value),
             )
             subject.resume_blob_ref = ref
-            subjects_by_ref[subject_seed.external_ref] = subject
 
     titles = [document.title for document in dataset.documents]
     existing_titles = set(

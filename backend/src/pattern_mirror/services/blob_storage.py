@@ -56,6 +56,22 @@ class LocalDiskBlobStore:
         path.write_bytes(data)
 
 
+# backend/src/pattern_mirror/services/blob_storage.py -> repo root, so a relative BLOB_STORAGE_PATH
+# lands in the same place no matter which directory the server or the seed job is launched from.
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+
+def _resolve_root(path_str: str) -> Path:
+    """Anchor a relative blob path to the repo root; pass absolute paths through unchanged.
+
+    The default (``./deploy/blob-data``) is repo-root-relative — anchoring on CWD would let the
+    seed job write to one folder and the API server read from another, surfacing as a 404 download.
+    Production sets an absolute path, which is used as-is.
+    """
+    path = Path(path_str)
+    return path if path.is_absolute() else _REPO_ROOT / path
+
+
 def get_blob_store() -> BlobStore:
     """Return the configured blob store: the local-disk stand-in now, Azure Blob in production."""
-    return LocalDiskBlobStore(Path(get_settings().blob_storage_path))
+    return LocalDiskBlobStore(_resolve_root(get_settings().blob_storage_path))

@@ -113,6 +113,30 @@ def test_seeds_a_resume_blob_for_each_subject(
 
 
 @pytest.mark.db
+def test_backfills_a_resume_for_a_subject_that_predates_resumes(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    seed_demo_users(db_session)
+    db_session.flush()
+    existing = load_demo_dataset().subjects[0]
+    subject = Subject(
+        subject_type=existing.subject_type,
+        legal_name=existing.legal_name,
+        external_ref=existing.external_ref,
+        resume_blob_ref=None,
+    )
+    db_session.add(subject)
+    db_session.flush()
+
+    seed_demo_content(db_session, store=blob_store)
+    db_session.flush()
+
+    db_session.refresh(subject)
+    assert subject.resume_blob_ref == resume_ref(subject.id)
+    assert blob_store.read(subject.resume_blob_ref).startswith(b"%PDF-")
+
+
+@pytest.mark.db
 def test_seed_content_is_idempotent(db_session: Session, blob_store: InMemoryBlobStore) -> None:
     _seed(db_session, blob_store)
     seed_demo_content(db_session, store=blob_store)
