@@ -13,10 +13,13 @@ import { CategorySummary } from '@/components/ui/category-summary'
 import { Editor } from '@/components/ui/editor'
 import { FlagCard } from '@/components/ui/flag-card'
 import { Legend } from '@/components/ui/legend'
-import { AutosaveStatus } from '@/components/jd-studio/autosave-status'
-import { JdEditor, type JdEditorHandle } from '@/components/jd-studio/jd-editor'
-import { useDocumentSession } from '@/components/jd-studio/use-document-session'
-import { useFlagInteractions } from '@/components/jd-studio/use-flag-interactions'
+import { AutosaveStatus } from '@/components/surface/autosave-status'
+import {
+  SurfaceEditor,
+  type SurfaceEditorHandle,
+} from '@/components/surface/surface-editor'
+import { useDocumentSession } from '@/components/surface/use-document-session'
+import { useFlagInteractions } from '@/components/surface/use-flag-interactions'
 
 const SUBMIT_LABELS = {
   idle: 'Publish JD',
@@ -30,7 +33,7 @@ export function JdStudio() {
   const { doc } = useSearch({ strict: false })
   const session = useDocumentSession('jd', doc)
   const [flags, setFlags] = useState<CitedFlag[]>([])
-  const editorRef = useRef<JdEditorHandle>(null)
+  const editorRef = useRef<SurfaceEditorHandle>(null)
   const { resolutions, accept, dismiss, undo } = useFlagInteractions()
 
   // Apply writes the chosen phrasing into the document and logs the acceptance; marking the
@@ -91,7 +94,7 @@ export function JdStudio() {
               </span>
             }
           >
-            <JdEditor
+            <SurfaceEditor
               ref={editorRef}
               documentId={session.documentId}
               editable={!readOnly}

@@ -1,4 +1,4 @@
-import type { SaveState } from '@/components/jd-studio/use-document-session'
+import type { SaveState } from '@/components/surface/use-document-session'
 
 /** Cloud-with-check mark — the rest state once a draft is safely autosaved. */
 function CloudCheck() {

@@ -27,8 +27,8 @@ import { FlagPopover } from '@/components/ui/flag-popover'
 import {
   applyFlags,
   FlagDecorations,
-} from '@/components/jd-studio/flag-decorations'
-import { useFlagStream } from '@/components/jd-studio/use-flag-stream'
+} from '@/components/surface/flag-decorations'
+import { useFlagStream } from '@/components/surface/use-flag-stream'
 
 const ANALYZE_DEBOUNCE_MS = 400
 
@@ -58,7 +58,7 @@ interface HoverState {
   left: number
 }
 
-export interface JdEditorProps {
+export interface SurfaceEditorProps {
   /** The backing document, created on first edit; null suspends Layer 1 and Layer 2 until then. */
   documentId: string | null
   /** False opens the saved text read-only (a submitted document from My Documents): no editing,
@@ -81,15 +81,15 @@ export interface JdEditorProps {
 const POPOVER_CLOSE_MS = 100
 
 /** Imperative surface the flag panel uses to apply a recommendation into the text. */
-export interface JdEditorHandle {
+export interface SurfaceEditorHandle {
   applyRecommendation: (flag: CitedFlag, replacement: string) => void
 }
 
-/** The writing surface: a single-paragraph TipTap editor whose text is analysed
- *  on a typing pause, with the returned flags drawn as inline underlines that
- *  reveal their citation on hover. */
-export const JdEditor = forwardRef<JdEditorHandle, JdEditorProps>(
-  function JdEditor(
+/** The shared writing surface behind JD Studio, Feedback Checkpoint, and Promotion Writeup:
+ *  a single-paragraph TipTap editor whose text is analysed on a typing pause, with the
+ *  returned flags drawn as inline underlines that reveal their citation on hover. */
+export const SurfaceEditor = forwardRef<SurfaceEditorHandle, SurfaceEditorProps>(
+  function SurfaceEditor(
     {
       documentId,
       editable = true,
