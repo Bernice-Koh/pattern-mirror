@@ -17,10 +17,12 @@ from sqlalchemy.orm import Session
 
 from pattern_mirror.db.session import get_sessionmaker
 from pattern_mirror.jobs.demo_dataset import DemoDataset, DocumentSeed, load_demo_dataset
+from pattern_mirror.jobs.resume_fixtures import render_resume_pdf, resume_ref
 from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import DocType, DocumentStatus, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.services.blob_storage import BlobStore, get_blob_store
 
 
 @dataclass(frozen=True)
@@ -96,14 +98,20 @@ def _jd_id_by_role(session: Session, owner_id: uuid.UUID) -> dict[str, uuid.UUID
     return {jd.role_title: jd.id for jd in jds if jd.role_title is not None}
 
 
-def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> None:
+def seed_demo_content(
+    session: Session,
+    dataset: DemoDataset | None = None,
+    store: BlobStore | None = None,
+) -> None:
     """Insert any demo subject and document not already present, owned by the demo manager.
 
     Subjects are matched by ``external_ref`` and documents by ``(owner_id, title)``, so a
     re-run is a no-op. Feedback documents are linked to their subject and seeded as submitted,
-    representing the finished writing history the Pattern Dashboard mines.
+    representing the finished writing history the Pattern Dashboard mines. Each new subject also
+    gets a synthetic resume written to the blob store, so the download link (#118) resolves.
     """
     dataset = dataset or load_demo_dataset()
+    store = store or get_blob_store()
     manager = _demo_manager(session)
 
     refs = [subject.external_ref for subject in dataset.subjects]
@@ -112,7 +120,8 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
         for subject in session.scalars(select(Subject).where(Subject.external_ref.in_(refs))).all()
     }
     for subject_seed in dataset.subjects:
-        if subject_seed.external_ref not in subjects_by_ref:
+        subject = subjects_by_ref.get(subject_seed.external_ref)
+        if subject is None:
             subject = Subject(
                 subject_type=subject_seed.subject_type,
                 legal_name=subject_seed.legal_name,
@@ -123,6 +132,16 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
             session.add(subject)
             session.flush()
             subjects_by_ref[subject_seed.external_ref] = subject
+        # Backfill the resume for any subject missing one, not only ones created just now, so a
+        # database seeded before resumes existed gets them on the next run (still idempotent once
+        # the ref is set).
+        if subject.resume_blob_ref is None:
+            ref = resume_ref(subject.id)
+            store.write(
+                ref,
+                render_resume_pdf(name=subject.legal_name, subject_type=subject.subject_type.value),
+            )
+            subject.resume_blob_ref = ref
 
     titles = [document.title for document in dataset.documents]
     existing_titles = set(

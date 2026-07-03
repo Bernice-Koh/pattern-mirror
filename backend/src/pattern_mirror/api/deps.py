@@ -80,3 +80,20 @@ def require_hr(
     if principal.role is not UserRole.hr:
         raise NotAuthorizedError
     return principal
+
+
+def require_manager(
+    principal: Annotated[SessionPrincipal, Depends(get_current_principal)],
+) -> SessionPrincipal:
+    """Authorize a manager-only endpoint: the active session role must be manager.
+
+    Resume downloads are individual candidate/employee content, which HR never sees (design spec
+    §5: HR reads aggregates only). Gating on the active role keeps an HR-portal session out even
+    for a user who also holds the manager role.
+
+    Raises:
+        NotAuthorizedError: if the signed-in session is not acting as a manager.
+    """
+    if principal.role is not UserRole.manager:
+        raise NotAuthorizedError
+    return principal

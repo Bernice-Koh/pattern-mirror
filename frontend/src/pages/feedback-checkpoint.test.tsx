@@ -87,6 +87,7 @@ describe('FeedbackCheckpoint', () => {
   beforeEach(() => {
     vi.mocked(getFeedbackContext).mockResolvedValue({
       role_title: 'Markets Analyst',
+      subject_id: 'subj-1',
       subject_name: 'Taylor Quek',
       criteria: ['Strong SQL', '5+ years Python'],
     })
@@ -126,6 +127,10 @@ describe('FeedbackCheckpoint', () => {
     // "Strong SQL" appears both as a criteria chip and a coverage row.
     expect(screen.getAllByText('Strong SQL').length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText('1 of 2 not addressed')).toBeInTheDocument()
+    // The resume download link renders once the context resolves a subject.
+    expect(
+      screen.getByRole('button', { name: 'Download résumé' }),
+    ).toBeInTheDocument()
   })
 
   it('lists the bias flags as observations', async () => {

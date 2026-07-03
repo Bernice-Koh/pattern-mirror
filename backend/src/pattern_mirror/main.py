@@ -26,6 +26,7 @@ from pattern_mirror.api import (
     hr,
     interactions,
     patterns,
+    resumes,
     streaming,
 )
 from pattern_mirror.core.config import get_settings
@@ -41,6 +42,7 @@ from pattern_mirror.core.errors import (
     PatternMirrorError,
     PendingAdditionNotFoundError,
     ProposalNotFoundError,
+    ResumeNotFoundError,
 )
 from pattern_mirror.core.logging import configure_logging
 from pattern_mirror.core.middleware import CorrelationIdMiddleware
@@ -120,6 +122,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(DocumentNotFoundError, _handle_not_found)
     app.add_exception_handler(FlagNotFoundError, _handle_not_found)
     app.add_exception_handler(DriftFindingNotFoundError, _handle_not_found)
+    app.add_exception_handler(ResumeNotFoundError, _handle_not_found)
     app.add_exception_handler(PendingAdditionNotFoundError, _handle_not_found)
     app.add_exception_handler(ProposalNotFoundError, _handle_not_found)
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
@@ -138,4 +141,5 @@ def create_app() -> FastAPI:
     app.include_router(patterns.router)
     app.include_router(hr.router)
     app.include_router(growth.router)
+    app.include_router(resumes.router)
     return app

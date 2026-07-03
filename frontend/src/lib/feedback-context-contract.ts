@@ -3,6 +3,7 @@
 
 export interface FeedbackContext {
   role_title: string | null
+  subject_id: string | null
   subject_name: string | null
   criteria: string[]
 }

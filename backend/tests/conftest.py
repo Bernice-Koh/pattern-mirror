@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import NullPool
 
 from pattern_mirror.core.config import get_settings
+from pattern_mirror.core.errors import BlobNotFoundError
 from pattern_mirror.main import create_app
 
 _BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -40,6 +41,28 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     with TestClient(create_app()) as test_client:
         yield test_client
     get_settings.cache_clear()
+
+
+class InMemoryBlobStore:
+    """A ``BlobStore`` that keeps blobs in a dict, so tests never touch the filesystem."""
+
+    def __init__(self) -> None:
+        self._blobs: dict[str, bytes] = {}
+
+    def read(self, ref: str) -> bytes:
+        try:
+            return self._blobs[ref]
+        except KeyError as exc:
+            raise BlobNotFoundError(ref) from exc
+
+    def write(self, ref: str, data: bytes) -> None:
+        self._blobs[ref] = data
+
+
+@pytest.fixture
+def blob_store() -> InMemoryBlobStore:
+    """A fresh in-memory blob store for a test."""
+    return InMemoryBlobStore()
 
 
 def _alembic_config(url: str) -> Config:
