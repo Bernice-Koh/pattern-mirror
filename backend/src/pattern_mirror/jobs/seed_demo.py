@@ -8,6 +8,7 @@ Re-running only inserts what is missing — users by ``external_user_id``, subje
 ``external_ref``, documents by ``(owner_id, title)`` — so it is safe to run repeatedly.
 """
 
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -15,10 +16,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.db.session import get_sessionmaker
-from pattern_mirror.jobs.demo_dataset import DemoDataset, load_demo_dataset
+from pattern_mirror.jobs.demo_dataset import DemoDataset, DocumentSeed, load_demo_dataset
 from pattern_mirror.models.documents import Document
-from pattern_mirror.models.enums import DocumentStatus, UserRole
+from pattern_mirror.models.enums import DocType, DocumentStatus, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
+from pattern_mirror.models.jd_criteria import JdCriterion
 
 
 @dataclass(frozen=True)
@@ -86,6 +88,14 @@ def _demo_manager(session: Session) -> User:
     return manager
 
 
+def _jd_id_by_role(session: Session, owner_id: uuid.UUID) -> dict[str, uuid.UUID]:
+    """Map each role title to its JD document id, so feedback links to the JD for its role."""
+    jds = session.scalars(
+        select(Document).where(Document.owner_id == owner_id, Document.doc_type == DocType.jd)
+    ).all()
+    return {jd.role_title: jd.id for jd in jds if jd.role_title is not None}
+
+
 def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> None:
     """Insert any demo subject and document not already present, owned by the demo manager.
 
@@ -123,6 +133,7 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
         ).all()
     )
     now = datetime.now(UTC)
+    created: list[tuple[DocumentSeed, Document]] = []
     for document_seed in dataset.documents:
         if document_seed.title in existing_titles:
             continue
@@ -131,19 +142,30 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
             if document_seed.subject_ref is not None
             else None
         )
-        session.add(
-            Document(
-                owner_id=manager.id,
-                doc_type=document_seed.doc_type,
-                title=document_seed.title,
-                role_title=document_seed.role_title,
-                subject_id=subject_id,
-                content=document_seed.content,
-                submitted_content=document_seed.content,
-                submitted_at=now,
-                status=DocumentStatus.submitted,
-            )
+        document = Document(
+            owner_id=manager.id,
+            doc_type=document_seed.doc_type,
+            title=document_seed.title,
+            role_title=document_seed.role_title,
+            subject_id=subject_id,
+            content=document_seed.content,
+            submitted_content=document_seed.content,
+            submitted_at=now,
+            status=DocumentStatus.submitted,
         )
+        session.add(document)
+        created.append((document_seed, document))
+    session.flush()
+
+    # Link each new feedback note to the JD for its role and seed each new JD's criteria, so the
+    # feedback drift check resolves a reference (#116). Only newly-created docs are touched, so a
+    # re-run stays a no-op.
+    jd_id_by_role = _jd_id_by_role(session, manager.id)
+    for document_seed, document in created:
+        if document.doc_type is DocType.feedback and document.role_title is not None:
+            document.reference_jd_id = jd_id_by_role.get(document.role_title)
+        for position, criterion in enumerate(document_seed.criteria):
+            session.add(JdCriterion(jd_document_id=document.id, text=criterion, position=position))
 
 
 def main() -> None:

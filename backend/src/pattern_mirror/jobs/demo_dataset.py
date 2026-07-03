@@ -27,13 +27,18 @@ class SubjectSeed(BaseModel):
 
 
 class DocumentSeed(BaseModel):
-    """A synthetic JD or feedback note. ``subject_ref`` links feedback to a subject; JDs omit it."""
+    """A synthetic JD or feedback note. ``subject_ref`` links feedback to a subject; JDs omit it.
+
+    ``criteria`` are a JD's stated requirements — the drift reference feedback is checked
+    against (#116). Only JDs carry them; feedback leaves the list empty.
+    """
 
     title: str
     doc_type: DocType
     role_title: str | None = None
     subject_ref: str | None = None
     content: str
+    criteria: list[str] = []
 
 
 class DemoDataset(BaseModel):

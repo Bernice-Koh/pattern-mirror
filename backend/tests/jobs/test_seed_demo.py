@@ -15,6 +15,7 @@ from pattern_mirror.jobs.seed_demo import (
 from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import DocType, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
+from pattern_mirror.models.jd_criteria import JdCriterion
 
 
 def _user(db_session: Session, external_user_id: str) -> User:
@@ -104,6 +105,56 @@ def test_seed_content_is_idempotent(db_session: Session) -> None:
     documents = db_session.scalar(select(func.count()).select_from(Document))
     assert subjects == len(dataset.subjects)
     assert documents == len(dataset.documents)
+
+
+@pytest.mark.db
+def test_seeds_jd_criteria_for_the_jds(db_session: Session) -> None:
+    seed_demo_users(db_session)
+    db_session.flush()
+    seed_demo_content(db_session)
+    db_session.flush()
+
+    dataset = load_demo_dataset()
+    expected = sum(len(document.criteria) for document in dataset.documents)
+    seeded = db_session.scalar(select(func.count()).select_from(JdCriterion))
+    assert expected > 0
+    assert seeded == expected
+
+
+@pytest.mark.db
+def test_feedback_links_to_the_jd_for_its_role(db_session: Session) -> None:
+    seed_demo_users(db_session)
+    db_session.flush()
+    seed_demo_content(db_session)
+    db_session.flush()
+
+    jd = db_session.scalar(
+        select(Document).where(
+            Document.doc_type == DocType.jd, Document.role_title == "Markets Analyst"
+        )
+    )
+    feedback = db_session.scalar(
+        select(Document)
+        .where(Document.doc_type == DocType.feedback, Document.role_title == "Markets Analyst")
+        .limit(1)
+    )
+    assert jd is not None
+    assert feedback is not None
+    assert feedback.reference_jd_id == jd.id
+
+
+@pytest.mark.db
+def test_reseeding_does_not_duplicate_jd_criteria(db_session: Session) -> None:
+    seed_demo_users(db_session)
+    db_session.flush()
+    seed_demo_content(db_session)
+    db_session.flush()
+    first = db_session.scalar(select(func.count()).select_from(JdCriterion))
+    seed_demo_content(db_session)
+    db_session.flush()
+    second = db_session.scalar(select(func.count()).select_from(JdCriterion))
+
+    assert second == first
 
 
 @pytest.mark.db

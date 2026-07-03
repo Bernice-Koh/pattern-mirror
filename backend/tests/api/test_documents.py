@@ -25,6 +25,7 @@ from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import FlagDismissal
 from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
 from pattern_mirror.models.identity import User
+from pattern_mirror.models.jd_criteria import JdCriterion
 from pattern_mirror.services.streaming_analysis import RunCompleted, StageCompleted
 
 pytestmark = pytest.mark.db
@@ -211,6 +212,38 @@ def test_recheck_clears_dismissals_and_streams_a_terminal_done(
 
     db_session.refresh(dismissal)
     assert dismissal.active is False
+
+
+def test_recheck_of_feedback_attaches_the_drift_check(
+    documents_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    jd = Document(owner_id=owner.id, doc_type=DocType.jd, role_title="Analyst", content="jd")
+    db_session.add(jd)
+    db_session.flush()
+    db_session.add(JdCriterion(jd_document_id=jd.id, text="Python proficiency", position=0))
+    feedback = Document(
+        owner_id=owner.id, doc_type=DocType.feedback, reference_jd_id=jd.id, content="fb"
+    )
+    db_session.add(feedback)
+    db_session.flush()
+
+    captured: dict[str, Any] = {}
+
+    def fake_stream(*args: object, **kwargs: object) -> Iterator[object]:
+        captured.update(kwargs)
+        yield RunCompleted(
+            analysis_run_id=uuid.uuid4(), status=AnalysisRunStatus.complete, flag_count=0
+        )
+
+    monkeypatch.setattr(documents, "stream_analysis_events", fake_stream)
+
+    response = documents_client.post(f"/documents/{feedback.id}/recheck", json={"content": "fb"})
+
+    assert response.status_code == 200
+    reference = captured["drift_reference"]
+    assert reference is not None
+    assert reference.reference_text == "Python proficiency"
+    assert captured["drift_client"] is captured["contextual_client"]
 
 
 def test_recheck_of_an_unknown_document_is_rejected(documents_client: TestClient) -> None:
