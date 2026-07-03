@@ -23,8 +23,8 @@ from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import FlagDismissal
-from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
-from pattern_mirror.models.identity import User
+from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType, SubjectType
+from pattern_mirror.models.identity import Subject, User
 from pattern_mirror.models.jd_criteria import JdCriterion
 from pattern_mirror.services.streaming_analysis import RunCompleted, StageCompleted
 
@@ -181,6 +181,75 @@ def _dismissal_on(db_session: Session, document: Document) -> FlagDismissal:
     db_session.add(dismissal)
     db_session.flush()
     return dismissal
+
+
+def test_feedback_context_returns_criteria_subject_and_role(
+    documents_client: TestClient, db_session: Session, owner: User
+) -> None:
+    jd = Document(owner_id=owner.id, doc_type=DocType.jd, role_title="Analyst", content="jd")
+    db_session.add(jd)
+    db_session.flush()
+    db_session.add_all(
+        [
+            JdCriterion(jd_document_id=jd.id, text="Python proficiency", position=0),
+            JdCriterion(jd_document_id=jd.id, text="Strong SQL", position=1),
+        ]
+    )
+    subject = Subject(subject_type=SubjectType.candidate, legal_name="Jordan Blake")
+    db_session.add(subject)
+    db_session.flush()
+    feedback = Document(
+        owner_id=owner.id,
+        doc_type=DocType.feedback,
+        role_title="Analyst",
+        reference_jd_id=jd.id,
+        subject_id=subject.id,
+        content="fb",
+    )
+    db_session.add(feedback)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{feedback.id}/feedback-context")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["role_title"] == "Analyst"
+    assert body["subject_name"] == "Jordan Blake"
+    assert body["criteria"] == ["Python proficiency", "Strong SQL"]
+
+
+def test_feedback_context_without_a_reference_returns_no_criteria(
+    documents_client: TestClient, db_session: Session, owner: User
+) -> None:
+    feedback = Document(owner_id=owner.id, doc_type=DocType.feedback, content="fb")
+    db_session.add(feedback)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{feedback.id}/feedback-context")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["criteria"] == []
+    assert body["subject_name"] is None
+
+
+def test_feedback_context_of_another_users_document_is_rejected(
+    documents_client: TestClient, db_session: Session
+) -> None:
+    other = User(
+        external_user_id="feedback-context-other",
+        legal_name="Feedback Context Other",
+        email="feedback.context.other@example.com",
+    )
+    db_session.add(other)
+    db_session.flush()
+    foreign = Document(owner_id=other.id, doc_type=DocType.feedback, content="fb")
+    db_session.add(foreign)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{foreign.id}/feedback-context")
+
+    assert response.status_code == 404
 
 
 def test_recheck_clears_dismissals_and_streams_a_terminal_done(

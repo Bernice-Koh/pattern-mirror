@@ -5,7 +5,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { CitedFlag } from '@/lib/analyze-contract'
 import { analyzeDocument } from '@/lib/analyze-client'
-import { JdEditor, type JdEditorHandle } from './jd-editor'
+import { SurfaceEditor, type SurfaceEditorHandle } from './surface-editor'
 import { useFlagStream } from './use-flag-stream'
 import { applyFlags } from './flag-decorations'
 
@@ -59,12 +59,12 @@ vi.mock('@tiptap/react', () => ({
     ),
 }))
 vi.mock('@tiptap/starter-kit', () => ({ default: {} }))
-vi.mock('@/components/jd-studio/flag-decorations', () => ({
+vi.mock('@/components/surface/flag-decorations', () => ({
   applyFlags: vi.fn(),
   FlagDecorations: {},
 }))
 vi.mock('@/lib/analyze-client', () => ({ analyzeDocument: vi.fn() }))
-vi.mock('@/components/jd-studio/use-flag-stream', () => ({
+vi.mock('@/components/surface/use-flag-stream', () => ({
   useFlagStream: vi.fn(),
 }))
 
@@ -73,7 +73,7 @@ function wrapper({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
 
-describe('JdEditor', () => {
+describe('SurfaceEditor', () => {
   beforeEach(() => {
     insertContentAt.mockClear()
     run.mockClear()
@@ -86,8 +86,8 @@ describe('JdEditor', () => {
   })
 
   it('applyRecommendation replaces the flagged span with the chosen phrasing', () => {
-    const ref = createRef<JdEditorHandle>()
-    render(<JdEditor ref={ref} documentId={null} initialContent="" />, {
+    const ref = createRef<SurfaceEditorHandle>()
+    render(<SurfaceEditor ref={ref} documentId={null} initialContent="" />, {
       wrapper,
     })
 
@@ -100,8 +100,8 @@ describe('JdEditor', () => {
   })
 
   it('applyRecommendation is a no-op when the span no longer matches', () => {
-    const ref = createRef<JdEditorHandle>()
-    render(<JdEditor ref={ref} documentId={null} initialContent="" />, {
+    const ref = createRef<SurfaceEditorHandle>()
+    render(<SurfaceEditor ref={ref} documentId={null} initialContent="" />, {
       wrapper,
     })
 
@@ -115,7 +115,7 @@ describe('JdEditor', () => {
   it('reveals the recommendation popover when a flagged span is hovered', () => {
     const onApplyRecommendation = vi.fn()
     render(
-      <JdEditor
+      <SurfaceEditor
         documentId={null}
         initialContent=""
         onApplyRecommendation={onApplyRecommendation}
@@ -137,7 +137,7 @@ describe('JdEditor', () => {
   it('dismisses the flag from the popover', () => {
     const onDismissFlag = vi.fn()
     render(
-      <JdEditor
+      <SurfaceEditor
         documentId={null}
         initialContent=""
         onDismissFlag={onDismissFlag}
@@ -153,7 +153,7 @@ describe('JdEditor', () => {
 
   it('clears a dismissed flag from the inline decorations', () => {
     render(
-      <JdEditor
+      <SurfaceEditor
         documentId={null}
         initialContent=""
         resolvedFlagIds={new Set(['f1'])}
@@ -168,7 +168,7 @@ describe('JdEditor', () => {
 
   it('does not open a popover for a dismissed flag on hover', () => {
     render(
-      <JdEditor
+      <SurfaceEditor
         documentId={null}
         initialContent=""
         resolvedFlagIds={new Set(['f1'])}
@@ -188,7 +188,7 @@ describe('JdEditor', () => {
       content_hash: 'hash',
       flags: [],
     })
-    render(<JdEditor documentId="doc-1" initialContent="biased text" />, {
+    render(<SurfaceEditor documentId="doc-1" initialContent="biased text" />, {
       wrapper,
     })
 
@@ -202,7 +202,7 @@ describe('JdEditor', () => {
 
   it('hides the Re-check control when opened read-only', () => {
     render(
-      <JdEditor
+      <SurfaceEditor
         documentId="doc-1"
         editable={false}
         initialContent="saved text"
@@ -214,7 +214,7 @@ describe('JdEditor', () => {
   })
 
   it('disables the Re-check button until a document exists', () => {
-    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
+    render(<SurfaceEditor documentId={null} initialContent="" />, { wrapper })
 
     expect(screen.getByRole('button', { name: /re-check/i })).toBeDisabled()
   })
@@ -225,13 +225,13 @@ describe('JdEditor', () => {
       recheck: vi.fn(),
       isRechecking: true,
     })
-    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
+    render(<SurfaceEditor documentId={null} initialContent="" />, { wrapper })
 
     expect(screen.getByRole('button', { name: /re-checking/i })).toBeDisabled()
   })
 
   it('schedules a close when the pointer leaves the flag, and reopens on re-hover', () => {
-    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
+    render(<SurfaceEditor documentId={null} initialContent="" />, { wrapper })
     const span = screen.getByText('young rockstar')
 
     fireEvent.mouseOver(span)

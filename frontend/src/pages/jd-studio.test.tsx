@@ -42,10 +42,10 @@ vi.mock('@/lib/interaction-client', () => ({
 }))
 
 // Stub the TipTap editor: surface FLAG to the panel and expose a no-op apply handle.
-vi.mock('@/components/jd-studio/jd-editor', async () => {
+vi.mock('@/components/surface/surface-editor', async () => {
   const React = await import('react')
   return {
-    JdEditor: React.forwardRef(function MockEditor(
+    SurfaceEditor: React.forwardRef(function MockEditor(
       props: {
         onFlagsChange?: (flags: unknown[]) => void
         resolvedFlagIds?: ReadonlySet<string>

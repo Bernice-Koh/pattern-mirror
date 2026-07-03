@@ -142,6 +142,7 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
             if document_seed.subject_ref is not None
             else None
         )
+        is_submitted = document_seed.status is DocumentStatus.submitted
         document = Document(
             owner_id=manager.id,
             doc_type=document_seed.doc_type,
@@ -149,9 +150,9 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
             role_title=document_seed.role_title,
             subject_id=subject_id,
             content=document_seed.content,
-            submitted_content=document_seed.content,
-            submitted_at=now,
-            status=DocumentStatus.submitted,
+            submitted_content=document_seed.content if is_submitted else None,
+            submitted_at=now if is_submitted else None,
+            status=document_seed.status,
         )
         session.add(document)
         created.append((document_seed, document))

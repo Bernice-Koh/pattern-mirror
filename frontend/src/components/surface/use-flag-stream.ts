@@ -21,11 +21,14 @@ const STREAM_IDLE_MS = 3000
  *    first dictionary pass returns, which suspends Layer 2 and disables re-check.
  *  @param text The editor's current text; its idle pause triggers the automatic run, and its
  *    current value is what a re-check analyses.
+ *  @param onRunComplete Fired with the run id when a run reaches its terminal `done` event, so a
+ *    surface can read side outputs the stream doesn't carry (Feedback Checkpoint's drift findings).
  *  @returns The accumulated contextual flags, a `recheck` trigger, and `isRechecking`.
  */
 export function useFlagStream(
   documentId: string | null,
   text: string,
+  onRunComplete?: (runId: string) => void,
 ): {
   contextualFlags: CitedFlag[]
   recheck: () => void
@@ -35,6 +38,11 @@ export function useFlagStream(
   const [isRechecking, setIsRechecking] = useState(false)
   const debouncedText = useDebouncedValue(text, STREAM_IDLE_MS)
   const controllerRef = useRef<AbortController | null>(null)
+  // Held in a ref so a fresh callback identity never re-subscribes the stream effect.
+  const onRunCompleteRef = useRef(onRunComplete)
+  useEffect(() => {
+    onRunCompleteRef.current = onRunComplete
+  }, [onRunComplete])
 
   useEffect(() => {
     if (!documentId || debouncedText.length === 0) return
@@ -60,6 +68,8 @@ export function useFlagStream(
             next.push(event.flag)
             setContextualFlags([...next])
             replaced = true
+          } else if (event.type === 'done') {
+            onRunCompleteRef.current?.(event.analysis_run_id)
           }
         }
         // A clean run that found nothing still clears the now-stale set.
@@ -102,6 +112,8 @@ export function useFlagStream(
             event.flag.source_stage === 'contextual'
           ) {
             setContextualFlags((prev) => [...prev, event.flag])
+          } else if (event.type === 'done') {
+            onRunCompleteRef.current?.(event.analysis_run_id)
           }
         }
       } catch {

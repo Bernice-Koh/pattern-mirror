@@ -11,7 +11,7 @@ from importlib.resources import files
 
 from pydantic import BaseModel, model_validator
 
-from pattern_mirror.models.enums import DocType, SubjectType
+from pattern_mirror.models.enums import DocType, DocumentStatus, SubjectType
 
 _DATASET_RESOURCE = "demo_dataset.json"
 
@@ -30,7 +30,9 @@ class DocumentSeed(BaseModel):
     """A synthetic JD or feedback note. ``subject_ref`` links feedback to a subject; JDs omit it.
 
     ``criteria`` are a JD's stated requirements — the drift reference feedback is checked
-    against (#116). Only JDs carry them; feedback leaves the list empty.
+    against (#116). Only JDs carry them; feedback leaves the list empty. ``status`` defaults to
+    submitted (the finished history the Pattern Dashboard mines); one draft feedback note is
+    seeded so the Feedback Checkpoint's live write→analyze→submit flow is demoable.
     """
 
     title: str
@@ -39,6 +41,7 @@ class DocumentSeed(BaseModel):
     subject_ref: str | None = None
     content: str
     criteria: list[str] = []
+    status: DocumentStatus = DocumentStatus.submitted
 
 
 class DemoDataset(BaseModel):
