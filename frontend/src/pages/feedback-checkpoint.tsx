@@ -10,6 +10,7 @@ import { Editor } from '@/components/ui/editor'
 import { Legend } from '@/components/ui/legend'
 import { ObservationList } from '@/components/ui/observation-list'
 import { AutosaveStatus } from '@/components/surface/autosave-status'
+import { ResumeDownload } from '@/components/surface/resume-download'
 import {
   SurfaceEditor,
   type SurfaceEditorHandle,
@@ -122,6 +123,10 @@ export function FeedbackCheckpoint() {
             <Chip>{context.data.subject_name}</Chip>
           )}
           {context.data?.role_title && <Chip>{context.data.role_title}</Chip>}
+          <ResumeDownload
+            subjectId={context.data?.subject_id}
+            subjectName={context.data?.subject_name}
+          />
         </div>
       </div>
 

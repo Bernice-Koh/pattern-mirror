@@ -23,6 +23,7 @@ export default defineConfig({
       '/patterns': 'http://localhost:8000',
       '/hr': 'http://localhost:8000',
       '/growth': 'http://localhost:8000',
+      '/subjects': 'http://localhost:8000',
     },
   },
   test: {
