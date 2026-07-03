@@ -44,11 +44,27 @@ class DocumentSeed(BaseModel):
     status: DocumentStatus = DocumentStatus.submitted
 
 
+class PeerFeedbackSeed(BaseModel):
+    """One peer's three-field feedback about an employee, the promotion drift reference (#119).
+
+    ``subject_ref`` links the feedback to the employee it is about; the drift check resolves an
+    employee's rows into a single reference text a promotion writeup is measured against (§8).
+    """
+
+    subject_ref: str
+    author_label: str
+    strengths: str
+    development: str
+    overall: str
+
+
 class DemoDataset(BaseModel):
-    """The whole dataset: the subjects and the documents written about (or for) them."""
+    """The whole dataset: the subjects, the documents written about (or for) them, and the
+    peer feedback held on the employees a promotion writeup is checked against."""
 
     subjects: list[SubjectSeed]
     documents: list[DocumentSeed]
+    peer_feedback: list[PeerFeedbackSeed] = []
 
     @model_validator(mode="after")
     def _refs_resolve(self) -> "DemoDataset":
@@ -64,6 +80,19 @@ class DemoDataset(BaseModel):
         }
         if unknown:
             raise ValueError(f"document subject_ref(s) with no matching subject: {sorted(unknown)}")
+
+        employee_refs = {
+            subject.external_ref
+            for subject in self.subjects
+            if subject.subject_type is SubjectType.employee
+        }
+        misdirected = {
+            peer.subject_ref for peer in self.peer_feedback if peer.subject_ref not in employee_refs
+        }
+        if misdirected:
+            raise ValueError(
+                f"peer_feedback subject_ref(s) not an employee subject: {sorted(misdirected)}"
+            )
         return self
 
 

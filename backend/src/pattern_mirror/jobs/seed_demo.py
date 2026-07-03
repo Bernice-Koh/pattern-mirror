@@ -22,6 +22,7 @@ from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import DocType, DocumentStatus, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.peer_feedback import PeerFeedback
 from pattern_mirror.services.blob_storage import BlobStore, get_blob_store
 
 
@@ -186,6 +187,36 @@ def seed_demo_content(
             document.reference_jd_id = jd_id_by_role.get(document.role_title)
         for position, criterion in enumerate(document_seed.criteria):
             session.add(JdCriterion(jd_document_id=document.id, text=criterion, position=position))
+
+    _seed_peer_feedback(session, dataset, subjects_by_ref)
+
+
+def _seed_peer_feedback(
+    session: Session, dataset: DemoDataset, subjects_by_ref: dict[str | None, Subject]
+) -> None:
+    """Insert each employee's peer feedback, the reference a promotion writeup drifts against.
+
+    Peer feedback rows carry no natural key, so a subject that already has any is skipped whole
+    rather than deduplicated row by row — keeping a re-run a no-op. Position follows dataset order.
+    """
+    already_seeded = set(session.scalars(select(PeerFeedback.subject_id).distinct()).all())
+    position_by_subject: dict[uuid.UUID, int] = {}
+    for peer_seed in dataset.peer_feedback:
+        subject = subjects_by_ref[peer_seed.subject_ref]
+        if subject.id in already_seeded:
+            continue
+        position = position_by_subject.get(subject.id, 0)
+        position_by_subject[subject.id] = position + 1
+        session.add(
+            PeerFeedback(
+                subject_id=subject.id,
+                author_label=peer_seed.author_label,
+                strengths=peer_seed.strengths,
+                development=peer_seed.development,
+                overall=peer_seed.overall,
+                position=position,
+            )
+        )
 
 
 def main() -> None:

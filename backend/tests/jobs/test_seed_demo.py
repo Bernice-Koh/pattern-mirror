@@ -15,9 +15,10 @@ from pattern_mirror.jobs.seed_demo import (
     seed_demo_users,
 )
 from pattern_mirror.models.documents import Document
-from pattern_mirror.models.enums import DocType, DocumentStatus, UserRole
+from pattern_mirror.models.enums import DocType, DocumentStatus, SubjectType, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.peer_feedback import PeerFeedback
 
 
 def _user(db_session: Session, external_user_id: str) -> User:
@@ -197,6 +198,61 @@ def test_seeds_a_draft_feedback_linked_to_its_jd(
     assert draft.submitted_content is None
     assert draft.reference_jd_id is not None
     assert draft.subject_id is not None
+
+
+@pytest.mark.db
+def test_seeds_peer_feedback_for_employees(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+
+    dataset = load_demo_dataset()
+    seeded = db_session.scalar(select(func.count()).select_from(PeerFeedback))
+    assert len(dataset.peer_feedback) > 0
+    assert seeded == len(dataset.peer_feedback)
+
+
+@pytest.mark.db
+def test_peer_feedback_hangs_off_an_employee_subject(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+
+    row = db_session.scalar(select(PeerFeedback).limit(1))
+    assert row is not None
+    subject = db_session.get(Subject, row.subject_id)
+    assert subject is not None
+    assert subject.subject_type is SubjectType.employee
+
+
+@pytest.mark.db
+def test_promotion_draft_carries_its_employee_subject(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+
+    promotion = db_session.scalar(
+        select(Document).where(Document.doc_type == DocType.promotion).limit(1)
+    )
+    assert promotion is not None
+    assert promotion.status is DocumentStatus.draft
+    assert promotion.subject_id is not None
+    subject = db_session.get(Subject, promotion.subject_id)
+    assert subject is not None
+    assert subject.subject_type is SubjectType.employee
+
+
+@pytest.mark.db
+def test_reseeding_does_not_duplicate_peer_feedback(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+    first = db_session.scalar(select(func.count()).select_from(PeerFeedback))
+    seed_demo_content(db_session, store=blob_store)
+    db_session.flush()
+    second = db_session.scalar(select(func.count()).select_from(PeerFeedback))
+
+    assert second == first
 
 
 @pytest.mark.db

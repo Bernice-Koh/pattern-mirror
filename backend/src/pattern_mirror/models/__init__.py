@@ -19,6 +19,7 @@ from pattern_mirror.models.engine import Flag, FlagDismissal
 from pattern_mirror.models.growth import DictionaryProposal, PendingDictionaryAddition
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.peer_feedback import PeerFeedback
 from pattern_mirror.models.reference import Citation, Region
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "Flag",
     "FlagDismissal",
     "JdCriterion",
+    "PeerFeedback",
     "PendingDictionaryAddition",
     "Region",
     "Subject",
