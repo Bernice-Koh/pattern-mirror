@@ -13,7 +13,7 @@ from pattern_mirror.jobs.seed_demo import (
     seed_demo_users,
 )
 from pattern_mirror.models.documents import Document
-from pattern_mirror.models.enums import DocType, UserRole
+from pattern_mirror.models.enums import DocType, DocumentStatus, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 from pattern_mirror.models.jd_criteria import JdCriterion
 
@@ -141,6 +141,25 @@ def test_feedback_links_to_the_jd_for_its_role(db_session: Session) -> None:
     assert jd is not None
     assert feedback is not None
     assert feedback.reference_jd_id == jd.id
+
+
+@pytest.mark.db
+def test_seeds_a_draft_feedback_linked_to_its_jd(db_session: Session) -> None:
+    seed_demo_users(db_session)
+    db_session.flush()
+    seed_demo_content(db_session)
+    db_session.flush()
+
+    draft = db_session.scalar(
+        select(Document).where(
+            Document.doc_type == DocType.feedback, Document.status == DocumentStatus.draft
+        )
+    )
+    assert draft is not None
+    assert draft.submitted_at is None
+    assert draft.submitted_content is None
+    assert draft.reference_jd_id is not None
+    assert draft.subject_id is not None
 
 
 @pytest.mark.db

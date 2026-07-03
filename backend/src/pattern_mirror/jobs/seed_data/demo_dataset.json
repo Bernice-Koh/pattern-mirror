@@ -23,7 +23,8 @@
     {"external_ref": "demo-subj-f9", "legal_name": "Chloe Wong", "subject_type": "candidate", "gender": "female", "age_band": "20-29"},
     {"external_ref": "demo-subj-f10", "legal_name": "Natasha Iyer", "subject_type": "candidate", "gender": "female", "age_band": "30-39"},
     {"external_ref": "demo-subj-f11", "legal_name": "Farah Aziz", "subject_type": "candidate", "gender": "female", "age_band": "40-49"},
-    {"external_ref": "demo-subj-f12", "legal_name": "Lavanya Suresh", "subject_type": "candidate", "gender": "female", "age_band": "50-59"}
+    {"external_ref": "demo-subj-f12", "legal_name": "Lavanya Suresh", "subject_type": "candidate", "gender": "female", "age_band": "50-59"},
+    {"external_ref": "demo-subj-d1", "legal_name": "Taylor Quek", "subject_type": "candidate", "gender": null, "age_band": null}
   ],
   "documents": [
     {"title": "Markets Analyst — Equity Derivatives [demo]", "doc_type": "jd", "role_title": "Markets Analyst", "subject_ref": null, "content": "We are looking for a young, dynamic analyst to join our fast-paced equity derivatives desk. The ideal candidate thrives in a competitive environment and is hungry to win.", "criteria": ["Understanding of equity derivatives products and pricing", "Proficiency in Python for market data analysis", "Ability to articulate a clear market view", "Sound judgement managing risk under pressure"]},
@@ -51,6 +52,7 @@
     {"title": "Interview feedback — Chloe Wong [demo]", "doc_type": "feedback", "role_title": "Markets Analyst", "subject_ref": "demo-subj-f9", "content": "Polished and professional. She handled the curveball question with real poise."},
     {"title": "Interview feedback — Natasha Iyer [demo]", "doc_type": "feedback", "role_title": "Markets Analyst", "subject_ref": "demo-subj-f10", "content": "Natasha is aggressive in the best sense — she goes after the trade and owns the outcome. Dependable and consistent."},
     {"title": "Interview feedback — Farah Aziz [demo]", "doc_type": "feedback", "role_title": "Markets Analyst", "subject_ref": "demo-subj-f11", "content": "I am not sure Farah is a strong cultural fit for the desk, though she is clearly dependable and hard-working."},
-    {"title": "Interview feedback — Lavanya Suresh [demo]", "doc_type": "feedback", "role_title": "Markets Analyst", "subject_ref": "demo-subj-f12", "content": "Lavanya is methodical and precise. Strong fundamentals; she would benefit from more direct market exposure."}
+    {"title": "Interview feedback — Lavanya Suresh [demo]", "doc_type": "feedback", "role_title": "Markets Analyst", "subject_ref": "demo-subj-f12", "content": "Lavanya is methodical and precise. Strong fundamentals; she would benefit from more direct market exposure."},
+    {"title": "Interview feedback — Taylor Quek (draft) [demo]", "doc_type": "feedback", "role_title": "Markets Analyst", "subject_ref": "demo-subj-d1", "status": "draft", "content": "Candidate seemed a little nervous in the first ten minutes but settled once we got into the technical questions. Strong grasp of options pricing and the Greeks — clearly understands equity derivatives products. Walked me through a clean Python script for pulling and cleaning market data. I'm not sure about culture fit; gave off a quiet vibe in the panel. We didn't really get to how they would handle risk under pressure."}
   ]
 }
