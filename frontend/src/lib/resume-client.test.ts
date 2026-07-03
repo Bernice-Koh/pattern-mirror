@@ -5,11 +5,10 @@ function mockFetch(response: Response) {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
 }
 
+// A string body, not a Blob: jsdom's Blob lacks `.stream()`, which the Response
+// constructor calls, so wrapping a Blob throws in CI. `response.blob()` still works.
 function pdfResponse(headers: Record<string, string> = {}): Response {
-  return new Response(new Blob([new Uint8Array([1, 2, 3])]), {
-    status: 200,
-    headers,
-  })
+  return new Response('%PDF-bytes', { status: 200, headers })
 }
 
 describe('resume-client', () => {
