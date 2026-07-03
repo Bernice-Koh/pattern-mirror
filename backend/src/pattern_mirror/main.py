@@ -20,6 +20,7 @@ from pattern_mirror.api import (
     analyze,
     auth,
     documents,
+    drift,
     growth,
     health,
     hr,
@@ -32,6 +33,7 @@ from pattern_mirror.core.errors import (
     AdditionAlreadyDecidedError,
     DictionaryEntryExistsError,
     DocumentNotFoundError,
+    DriftFindingNotFoundError,
     FlagNotFoundError,
     InvalidCredentialsError,
     NotAuthenticatedError,
@@ -117,6 +119,7 @@ def create_app() -> FastAPI:
     app.add_middleware(CorrelationIdMiddleware)
     app.add_exception_handler(DocumentNotFoundError, _handle_not_found)
     app.add_exception_handler(FlagNotFoundError, _handle_not_found)
+    app.add_exception_handler(DriftFindingNotFoundError, _handle_not_found)
     app.add_exception_handler(PendingAdditionNotFoundError, _handle_not_found)
     app.add_exception_handler(ProposalNotFoundError, _handle_not_found)
     app.add_exception_handler(InvalidCredentialsError, _handle_unauthorized)
@@ -131,6 +134,7 @@ def create_app() -> FastAPI:
     app.include_router(streaming.router)
     app.include_router(interactions.router)
     app.include_router(documents.router)
+    app.include_router(drift.router)
     app.include_router(patterns.router)
     app.include_router(hr.router)
     app.include_router(growth.router)

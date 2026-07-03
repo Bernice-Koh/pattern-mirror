@@ -29,6 +29,7 @@ from pattern_mirror.models.enums import (
 from pattern_mirror.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
+    from pattern_mirror.models.drift import DriftFinding, DriftFindingDismissal
     from pattern_mirror.models.engine import Flag, FlagDismissal
     from pattern_mirror.models.identity import Subject, User
 
@@ -65,6 +66,10 @@ class Document(TimestampMixin, Base):
     analysis_runs: Mapped[list["AnalysisRun"]] = relationship(back_populates="document")
     flags: Mapped[list["Flag"]] = relationship(back_populates="document")
     dismissals: Mapped[list["FlagDismissal"]] = relationship(back_populates="document")
+    drift_findings: Mapped[list["DriftFinding"]] = relationship(back_populates="document")
+    drift_finding_dismissals: Mapped[list["DriftFindingDismissal"]] = relationship(
+        back_populates="document"
+    )
 
 
 class AnalysisRun(Base):
@@ -86,3 +91,4 @@ class AnalysisRun(Base):
 
     document: Mapped["Document"] = relationship(back_populates="analysis_runs")
     flags: Mapped[list["Flag"]] = relationship(back_populates="analysis_run")
+    drift_findings: Mapped[list["DriftFinding"]] = relationship(back_populates="analysis_run")

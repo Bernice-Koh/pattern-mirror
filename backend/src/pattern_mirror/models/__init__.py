@@ -10,6 +10,11 @@ from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.calibration import CalibrationRun
 from pattern_mirror.models.dictionary import Dictionary
 from pattern_mirror.models.documents import AnalysisRun, Document
+from pattern_mirror.models.drift import (
+    DriftFinding,
+    DriftFindingDismissal,
+    DriftFindingInteraction,
+)
 from pattern_mirror.models.engine import Flag, FlagDismissal
 from pattern_mirror.models.growth import DictionaryProposal, PendingDictionaryAddition
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
@@ -23,6 +28,9 @@ __all__ = [
     "Dictionary",
     "DictionaryProposal",
     "Document",
+    "DriftFinding",
+    "DriftFindingDismissal",
+    "DriftFindingInteraction",
     "Flag",
     "FlagDismissal",
     "PendingDictionaryAddition",

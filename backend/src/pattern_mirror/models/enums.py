@@ -93,6 +93,19 @@ class FlagInteractionKind(StrEnum):
     undo = auto()
 
 
+class ReferenceKind(StrEnum):
+    # Which reference corpus a drift finding was checked against; the surface renders the label
+    # ("criteria" vs "peer feedback"). Derived from the document's doc_type at persist time.
+    jd_criteria = auto()
+    peer_feedback = auto()
+
+
+class DriftFindingInteractionKind(StrEnum):
+    # A drift finding is dismissed or restored, never "accepted" — it is coverage, not a rewrite.
+    dismiss = auto()
+    undo = auto()
+
+
 class AgentName(StrEnum):
     contextual_pass = auto()
     judge = auto()
@@ -133,5 +146,9 @@ bias_category_enum = _pg_enum(BiasCategory, "bias_category")
 flag_scope_enum = _pg_enum(FlagScope, "flag_scope")
 flag_verdict_enum = _pg_enum(FlagVerdict, "flag_verdict")
 flag_interaction_kind_enum = _pg_enum(FlagInteractionKind, "flag_interaction_kind")
+reference_kind_enum = _pg_enum(ReferenceKind, "reference_kind")
+drift_finding_interaction_kind_enum = _pg_enum(
+    DriftFindingInteractionKind, "drift_finding_interaction_kind"
+)
 agent_name_enum = _pg_enum(AgentName, "agent_name")
 dictionary_addition_status_enum = _pg_enum(DictionaryAdditionStatus, "dictionary_addition_status")
