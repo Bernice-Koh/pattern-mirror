@@ -36,6 +36,7 @@ from pattern_mirror.services.documents import (
     submit_document,
     update_draft,
 )
+from pattern_mirror.services.drift_reference import resolve_drift_reference
 from pattern_mirror.services.interactions import deactivate_document_dismissals
 from pattern_mirror.services.run_registry import get_run_registry
 from pattern_mirror.services.streaming_analysis import stream_analysis_events
@@ -213,6 +214,7 @@ async def recheck_document(
 
     registry = get_run_registry()
     client = build_instructor_client(get_settings())
+    drift_reference = resolve_drift_reference(session, document)
 
     def event_source() -> Iterator[bytes]:
         deactivate_document_dismissals(session, document.id)
@@ -226,6 +228,8 @@ async def recheck_document(
             contextual_client=client,
             judge_client=client,
             recommendations_client=client,
+            drift_client=client if drift_reference is not None else None,
+            drift_reference=drift_reference,
             trigger=AnalysisTrigger.recheck,
         ):
             yield format_sse(event)
