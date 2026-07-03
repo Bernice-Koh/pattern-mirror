@@ -214,6 +214,7 @@ def test_feedback_context_returns_criteria_subject_and_role(
     assert response.status_code == 200
     body = response.json()
     assert body["role_title"] == "Analyst"
+    assert body["subject_id"] == str(subject.id)
     assert body["subject_name"] == "Jordan Blake"
     assert body["criteria"] == ["Python proficiency", "Strong SQL"]
 
@@ -230,6 +231,7 @@ def test_feedback_context_without_a_reference_returns_no_criteria(
     assert response.status_code == 200
     body = response.json()
     assert body["criteria"] == []
+    assert body["subject_id"] is None
     assert body["subject_name"] is None
 
 

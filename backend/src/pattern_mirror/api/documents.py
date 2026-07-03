@@ -117,6 +117,7 @@ class FeedbackContextResponse(BaseModel):
     the candidate and role, and the JD criteria the note's drift check is measured against."""
 
     role_title: str | None
+    subject_id: uuid.UUID | None
     subject_name: str | None
     criteria: list[str]
 
@@ -166,6 +167,7 @@ def get_feedback_context(
     context = resolve_feedback_context(session, document_id=doc_id, owner_id=current_user.id)
     return FeedbackContextResponse(
         role_title=context.role_title,
+        subject_id=context.subject_id,
         subject_name=context.subject_name,
         criteria=context.criteria,
     )

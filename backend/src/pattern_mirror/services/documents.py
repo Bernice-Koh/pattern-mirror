@@ -74,6 +74,7 @@ class FeedbackContext:
     is about, and the JD criteria the drift check measures the note against."""
 
     role_title: str | None
+    subject_id: uuid.UUID | None
     subject_name: str | None
     criteria: list[str]
 
@@ -97,6 +98,7 @@ def resolve_feedback_context(
     )
     return FeedbackContext(
         role_title=document.role_title,
+        subject_id=document.subject_id,
         subject_name=document.subject.legal_name if document.subject is not None else None,
         criteria=criteria,
     )
