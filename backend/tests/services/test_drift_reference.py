@@ -16,10 +16,12 @@ from pattern_mirror.models.enums import DocType, SubjectType
 from pattern_mirror.models.identity import Subject, User
 from pattern_mirror.models.jd_criteria import JdCriterion
 from pattern_mirror.models.peer_feedback import PeerFeedback
+from pattern_mirror.models.promotion_rubric import PromotionRubricCriterion
 from pattern_mirror.services.drift_reference import (
     resolve_drift_reference,
     resolve_jd_criteria,
     resolve_peer_feedback,
+    resolve_promotion_rubric,
 )
 
 pytestmark = pytest.mark.db
@@ -188,6 +190,29 @@ def test_resolve_peer_feedback_orders_peers_by_position(db_session: Session) -> 
     blocks = resolve_peer_feedback(db_session, subject_id=employee.id)
     labels = [block.split("\n", 1)[0] for block in blocks]
     assert labels == ["first", "second"]
+
+
+def test_resolve_promotion_rubric_returns_texts_in_position_order(db_session: Session) -> None:
+    level = f"Director — {uuid.uuid4()}"
+    db_session.add(PromotionRubricCriterion(level_label=level, text="second", position=1))
+    db_session.add(PromotionRubricCriterion(level_label=level, text="first", position=0))
+    db_session.flush()
+
+    assert resolve_promotion_rubric(db_session, level_label=level) == ["first", "second"]
+
+
+def test_resolve_promotion_rubric_is_scoped_to_its_level(db_session: Session) -> None:
+    level = f"Director — {uuid.uuid4()}"
+    other = f"Director — {uuid.uuid4()}"
+    db_session.add(PromotionRubricCriterion(level_label=level, text="owns delivery", position=0))
+    db_session.add(PromotionRubricCriterion(level_label=other, text="other level", position=0))
+    db_session.flush()
+
+    assert resolve_promotion_rubric(db_session, level_label=level) == ["owns delivery"]
+
+
+def test_resolve_promotion_rubric_is_empty_for_an_unknown_level(db_session: Session) -> None:
+    assert resolve_promotion_rubric(db_session, level_label="Director — Unseeded") == []
 
 
 def test_peer_feedback_blocks_join_into_a_single_reference_text(db_session: Session) -> None:

@@ -16,6 +16,7 @@ from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import DocType
 from pattern_mirror.models.jd_criteria import JdCriterion
 from pattern_mirror.models.peer_feedback import PeerFeedback
+from pattern_mirror.models.promotion_rubric import PromotionRubricCriterion
 
 
 def resolve_jd_criteria(session: Session, *, jd_document_id: uuid.UUID) -> list[str]:
@@ -25,6 +26,21 @@ def resolve_jd_criteria(session: Session, *, jd_document_id: uuid.UUID) -> list[
             select(JdCriterion.text)
             .where(JdCriterion.jd_document_id == jd_document_id)
             .order_by(JdCriterion.position)
+        ).all()
+    )
+
+
+def resolve_promotion_rubric(session: Session, *, level_label: str) -> list[str]:
+    """Return a target level's promotion-rubric criteria texts in stated order.
+
+    Keyed by ``level_label`` (a writeup's ``role_title``), so every promotion to a level shares one
+    rubric — the promotion analogue of a role's JD criteria.
+    """
+    return list(
+        session.scalars(
+            select(PromotionRubricCriterion.text)
+            .where(PromotionRubricCriterion.level_label == level_label)
+            .order_by(PromotionRubricCriterion.position)
         ).all()
     )
 
