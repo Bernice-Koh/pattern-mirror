@@ -95,9 +95,11 @@ class FlagInteractionKind(StrEnum):
 
 class ReferenceKind(StrEnum):
     # Which reference corpus a drift finding was checked against; the surface renders the label
-    # ("criteria" vs "peer feedback"). Derived from the document's doc_type at persist time.
+    # ("JD criteria" vs "promotion rubric"). Derived from the document's doc_type at persist time.
+    # ``peer_feedback`` predates the rubric; a promotion now drifts against its rubric, not peers.
     jd_criteria = auto()
     peer_feedback = auto()
+    promotion_rubric = auto()
 
 
 class DriftFindingInteractionKind(StrEnum):

@@ -84,7 +84,7 @@ def _finding(
 
 def test_reference_kind_maps_by_doc_type() -> None:
     assert reference_kind_for(DocType.feedback) is ReferenceKind.jd_criteria
-    assert reference_kind_for(DocType.promotion) is ReferenceKind.peer_feedback
+    assert reference_kind_for(DocType.promotion) is ReferenceKind.promotion_rubric
 
 
 def test_a_jd_has_no_reference_corpus() -> None:

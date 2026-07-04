@@ -34,6 +34,7 @@ from pattern_mirror.services.documents import (
     get_draft,
     list_documents,
     resolve_feedback_context,
+    resolve_promotion_context,
     submit_document,
     update_draft,
 )
@@ -170,6 +171,53 @@ def get_feedback_context(
         subject_id=context.subject_id,
         subject_name=context.subject_name,
         criteria=context.criteria,
+    )
+
+
+class PeerCorroborationItem(BaseModel):
+    """One rubric criterion and whether the employee's peers evidence it, with the peer quote."""
+
+    criterion: str
+    corroborated: bool
+    evidence: str | None
+
+
+class PromotionContextResponse(BaseModel):
+    """The reference context the Promotion Writeup surface renders above the editor: the employee
+    and target level, the rubric the writeup's drift check is measured against, and what peers say
+    for each criterion (the corroborating evidence, #121)."""
+
+    role_title: str | None
+    subject_id: uuid.UUID | None
+    subject_name: str | None
+    criteria: list[str]
+    corroboration: list[PeerCorroborationItem]
+
+
+@router.get(
+    "/documents/{doc_id}/promotion-context",
+    summary="Read a promotion document's rubric bar, context chips, and peer corroboration",
+)
+def get_promotion_context(
+    doc_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> PromotionContextResponse:
+    """Return the employee, target level, rubric, and peer corroboration for the writeup surface."""
+    context = resolve_promotion_context(session, document_id=doc_id, owner_id=current_user.id)
+    return PromotionContextResponse(
+        role_title=context.role_title,
+        subject_id=context.subject_id,
+        subject_name=context.subject_name,
+        criteria=context.criteria,
+        corroboration=[
+            PeerCorroborationItem(
+                criterion=item.criterion,
+                corroborated=item.corroborated,
+                evidence=item.evidence,
+            )
+            for item in context.corroboration
+        ],
     )
 
 

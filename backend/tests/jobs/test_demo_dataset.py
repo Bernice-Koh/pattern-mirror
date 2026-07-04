@@ -52,6 +52,69 @@ def test_every_promotion_document_links_to_an_employee() -> None:
     assert all(doc.subject_ref in employee_refs for doc in promotion)
 
 
+def test_every_promotion_level_has_a_rubric() -> None:
+    dataset = load_demo_dataset()
+
+    rubric_levels = {rubric.level_label for rubric in dataset.promotion_rubrics}
+    promotion_levels = {
+        doc.role_title
+        for doc in dataset.documents
+        if doc.doc_type is DocType.promotion and doc.role_title is not None
+    }
+    assert promotion_levels
+    assert promotion_levels <= rubric_levels
+
+
+def test_peer_corroboration_criteria_match_the_rubric() -> None:
+    dataset = load_demo_dataset()
+
+    rubric_by_level = {
+        rubric.level_label: set(rubric.criteria) for rubric in dataset.promotion_rubrics
+    }
+    level_by_employee = {
+        doc.subject_ref: doc.role_title
+        for doc in dataset.documents
+        if doc.doc_type is DocType.promotion
+    }
+    assert dataset.peer_corroboration
+    for entry in dataset.peer_corroboration:
+        level = level_by_employee[entry.subject_ref]
+        assert entry.criterion in rubric_by_level[level]
+
+
+def test_rejects_peer_corroboration_pointing_at_a_non_employee() -> None:
+    with pytest.raises(ValidationError, match="not an employee subject"):
+        DemoDataset.model_validate(
+            {
+                "subjects": [
+                    {"external_ref": "c1", "legal_name": "A", "subject_type": "candidate"}
+                ],
+                "documents": [],
+                "peer_corroboration": [
+                    {"subject_ref": "c1", "criterion": "Owns delivery", "corroborated": True}
+                ],
+            }
+        )
+
+
+def test_rejects_promotion_without_a_rubric_for_its_level() -> None:
+    with pytest.raises(ValidationError, match="no rubric"):
+        DemoDataset.model_validate(
+            {
+                "subjects": [{"external_ref": "e1", "legal_name": "E", "subject_type": "employee"}],
+                "documents": [
+                    {
+                        "title": "t",
+                        "doc_type": "promotion",
+                        "role_title": "Director — Nowhere",
+                        "subject_ref": "e1",
+                        "content": "x",
+                    }
+                ],
+            }
+        )
+
+
 def test_rejects_peer_feedback_pointing_at_a_non_employee() -> None:
     with pytest.raises(ValidationError, match="not an employee subject"):
         DemoDataset.model_validate(

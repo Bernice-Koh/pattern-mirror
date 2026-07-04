@@ -22,7 +22,9 @@ from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import DocType, DocumentStatus, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.peer_corroboration import PeerCorroboration
 from pattern_mirror.models.peer_feedback import PeerFeedback
+from pattern_mirror.models.promotion_rubric import PromotionRubricCriterion
 from pattern_mirror.services.blob_storage import BlobStore, get_blob_store
 
 
@@ -189,6 +191,55 @@ def seed_demo_content(
             session.add(JdCriterion(jd_document_id=document.id, text=criterion, position=position))
 
     _seed_peer_feedback(session, dataset, subjects_by_ref)
+    _seed_promotion_rubrics(session, dataset)
+    _seed_peer_corroboration(session, dataset, subjects_by_ref)
+
+
+def _seed_promotion_rubrics(session: Session, dataset: DemoDataset) -> None:
+    """Insert each target level's rubric criteria, the reference a promotion writeup drifts against.
+
+    Keyed by ``level_label``; a level that already has any criteria is skipped whole, so a re-run is
+    a no-op. Position follows dataset order.
+    """
+    already_seeded = set(
+        session.scalars(select(PromotionRubricCriterion.level_label).distinct()).all()
+    )
+    for rubric in dataset.promotion_rubrics:
+        if rubric.level_label in already_seeded:
+            continue
+        for position, criterion in enumerate(rubric.criteria):
+            session.add(
+                PromotionRubricCriterion(
+                    level_label=rubric.level_label, text=criterion, position=position
+                )
+            )
+
+
+def _seed_peer_corroboration(
+    session: Session, dataset: DemoDataset, subjects_by_ref: dict[str | None, Subject]
+) -> None:
+    """Insert each employee's peer corroboration, the "what peers say" evidence against the rubric.
+
+    Keyed by ``subject_id``; an employee that already has any corroboration is skipped whole, so a
+    re-run is a no-op. Position follows dataset order.
+    """
+    already_seeded = set(session.scalars(select(PeerCorroboration.subject_id).distinct()).all())
+    position_by_subject: dict[uuid.UUID, int] = {}
+    for entry in dataset.peer_corroboration:
+        subject = subjects_by_ref[entry.subject_ref]
+        if subject.id in already_seeded:
+            continue
+        position = position_by_subject.get(subject.id, 0)
+        position_by_subject[subject.id] = position + 1
+        session.add(
+            PeerCorroboration(
+                subject_id=subject.id,
+                criterion=entry.criterion,
+                corroborated=entry.corroborated,
+                evidence=entry.evidence,
+                position=position,
+            )
+        )
 
 
 def _seed_peer_feedback(

@@ -2,7 +2,7 @@
  *  writing covers. One corpus-agnostic shape shared by Feedback Checkpoint and Promotion Writeup —
  *  the surface maps `reference_kind` to its own label. Kept in lockstep with backend api/drift.py. */
 
-export type ReferenceKind = 'jd_criteria' | 'peer_feedback'
+export type ReferenceKind = 'jd_criteria' | 'peer_feedback' | 'promotion_rubric'
 
 export type DriftInteractionKind = 'dismiss' | 'undo'
 

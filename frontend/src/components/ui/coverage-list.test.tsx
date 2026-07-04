@@ -48,4 +48,22 @@ describe('CoverageList', () => {
 
     expect(screen.getByText('not yet checked')).toBeInTheDocument()
   })
+
+  it('renders the optional corroboration pill alongside the status', () => {
+    render(
+      <CoverageList
+        items={[
+          {
+            label: 'Owns delivery',
+            addressed: false,
+            statusLabel: 'not evidenced',
+            corroboration: { corroborated: true, label: 'peers agree' },
+          },
+        ]}
+      />,
+    )
+
+    expect(screen.getByText('peers agree')).toBeInTheDocument()
+    expect(screen.getByText('not evidenced')).toBeInTheDocument()
+  })
 })

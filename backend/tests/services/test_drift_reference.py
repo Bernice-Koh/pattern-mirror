@@ -16,10 +16,12 @@ from pattern_mirror.models.enums import DocType, SubjectType
 from pattern_mirror.models.identity import Subject, User
 from pattern_mirror.models.jd_criteria import JdCriterion
 from pattern_mirror.models.peer_feedback import PeerFeedback
+from pattern_mirror.models.promotion_rubric import PromotionRubricCriterion
 from pattern_mirror.services.drift_reference import (
     resolve_drift_reference,
     resolve_jd_criteria,
     resolve_peer_feedback,
+    resolve_promotion_rubric,
 )
 
 pytestmark = pytest.mark.db
@@ -91,43 +93,39 @@ def test_a_jd_has_no_reference_of_its_own(db_session: Session) -> None:
     assert resolve_drift_reference(db_session, jd) is None
 
 
-def test_promotion_resolves_its_employees_peer_feedback(db_session: Session) -> None:
-    owner = _manager(db_session)
-    employee = _employee(db_session)
-    for author, position in [("Peer A", 0), ("Peer B", 1)]:
+def _rubric(db_session: Session, level_label: str, criteria: list[str]) -> None:
+    for position, text in enumerate(criteria):
         db_session.add(
-            PeerFeedback(
-                subject_id=employee.id,
-                author_label=author,
-                strengths="s",
-                development="d",
-                overall="o",
-                position=position,
-            )
+            PromotionRubricCriterion(level_label=level_label, text=text, position=position)
         )
-    promotion = Document(owner_id=owner.id, doc_type=DocType.promotion, subject_id=employee.id)
+    db_session.flush()
+
+
+def test_promotion_resolves_its_target_levels_rubric_in_order(db_session: Session) -> None:
+    owner = _manager(db_session)
+    level = f"Director — {uuid.uuid4()}"
+    _rubric(db_session, level, ["Owns delivery", "Cross-team impact"])
+    promotion = Document(owner_id=owner.id, doc_type=DocType.promotion, role_title=level)
     db_session.add(promotion)
     db_session.flush()
 
     reference = resolve_drift_reference(db_session, promotion)
 
-    assert reference is not None
-    assert reference.reference_text.startswith("Peer A\n")
-    # Peers are separated so the drift agent reads distinct voices, in stated order.
-    assert "\n\nPeer B\n" in reference.reference_text
+    assert reference == DriftReference(reference_text="Owns delivery\nCross-team impact")
 
 
-def test_promotion_without_peer_feedback_has_no_reference(db_session: Session) -> None:
+def test_promotion_without_a_rubric_for_its_level_has_no_reference(db_session: Session) -> None:
     owner = _manager(db_session)
-    employee = _employee(db_session)
-    promotion = Document(owner_id=owner.id, doc_type=DocType.promotion, subject_id=employee.id)
+    promotion = Document(
+        owner_id=owner.id, doc_type=DocType.promotion, role_title="Director — Unseeded"
+    )
     db_session.add(promotion)
     db_session.flush()
 
     assert resolve_drift_reference(db_session, promotion) is None
 
 
-def test_promotion_without_a_subject_has_no_reference(db_session: Session) -> None:
+def test_promotion_without_a_target_level_has_no_reference(db_session: Session) -> None:
     owner = _manager(db_session)
     promotion = Document(owner_id=owner.id, doc_type=DocType.promotion)
     db_session.add(promotion)
@@ -188,6 +186,29 @@ def test_resolve_peer_feedback_orders_peers_by_position(db_session: Session) -> 
     blocks = resolve_peer_feedback(db_session, subject_id=employee.id)
     labels = [block.split("\n", 1)[0] for block in blocks]
     assert labels == ["first", "second"]
+
+
+def test_resolve_promotion_rubric_returns_texts_in_position_order(db_session: Session) -> None:
+    level = f"Director — {uuid.uuid4()}"
+    db_session.add(PromotionRubricCriterion(level_label=level, text="second", position=1))
+    db_session.add(PromotionRubricCriterion(level_label=level, text="first", position=0))
+    db_session.flush()
+
+    assert resolve_promotion_rubric(db_session, level_label=level) == ["first", "second"]
+
+
+def test_resolve_promotion_rubric_is_scoped_to_its_level(db_session: Session) -> None:
+    level = f"Director — {uuid.uuid4()}"
+    other = f"Director — {uuid.uuid4()}"
+    db_session.add(PromotionRubricCriterion(level_label=level, text="owns delivery", position=0))
+    db_session.add(PromotionRubricCriterion(level_label=other, text="other level", position=0))
+    db_session.flush()
+
+    assert resolve_promotion_rubric(db_session, level_label=level) == ["owns delivery"]
+
+
+def test_resolve_promotion_rubric_is_empty_for_an_unknown_level(db_session: Session) -> None:
+    assert resolve_promotion_rubric(db_session, level_label="Director — Unseeded") == []
 
 
 def test_peer_feedback_blocks_join_into_a_single_reference_text(db_session: Session) -> None:
