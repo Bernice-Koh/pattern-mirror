@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from pattern_mirror.api.deps import get_current_user
+from pattern_mirror.api.schemas import FlagResponse, serialise_flag
 from pattern_mirror.api.sse import format_sse
 from pattern_mirror.core.config import get_settings
 from pattern_mirror.core.errors import DocumentNotFoundError
@@ -33,6 +34,7 @@ from pattern_mirror.services.documents import (
     create_draft,
     get_draft,
     list_documents,
+    list_flags,
     resolve_feedback_context,
     resolve_promotion_context,
     submit_document,
@@ -158,6 +160,22 @@ def get_document(
     """Return the owner's document so the editor can restore its draft on load."""
     document = get_draft(session, document_id=doc_id, owner_id=current_user.id)
     return _serialise_document(document)
+
+
+@router.get(
+    "/documents/{doc_id}/flags",
+    summary="List a document's latest-run bias flags",
+)
+def get_document_flags(
+    doc_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> list[FlagResponse]:
+    """Return the owner's latest-run, surfaced flags so a reopened surface re-hydrates without a
+    fresh engine run (the reason a submitted document shows its flags at all, and a draft skips the
+    contextual re-run on open)."""
+    flags = list_flags(session, document_id=doc_id, owner_id=current_user.id)
+    return [serialise_flag(flag) for flag in flags]
 
 
 @router.get(
