@@ -28,14 +28,14 @@ _log = structlog.get_logger("pattern_mirror.services.drift_findings")
 
 _REFERENCE_KIND_BY_DOC_TYPE: dict[DocType, ReferenceKind] = {
     DocType.feedback: ReferenceKind.jd_criteria,
-    DocType.promotion: ReferenceKind.peer_feedback,
+    DocType.promotion: ReferenceKind.promotion_rubric,
 }
 
 
 def reference_kind_for(doc_type: DocType) -> ReferenceKind:
     """Map a document type to the reference corpus its drift check runs against.
 
-    Feedback drifts against JD criteria, a promotion against peer feedback (design spec §3). A JD
+    Feedback drifts against JD criteria, a promotion against its rubric (design spec §3, §8). A JD
     has no reference of its own, so it never reaches the drift stage.
     """
     kind = _REFERENCE_KIND_BY_DOC_TYPE.get(doc_type)

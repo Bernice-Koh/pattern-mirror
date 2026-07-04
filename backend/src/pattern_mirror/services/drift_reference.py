@@ -1,9 +1,10 @@
 """Resolve the drift reference corpus for a document from its stored references.
 
-Feedback drifts against the criteria of the JD it references; promotion against an employee's
-peer feedback. One resolver so the streaming endpoints attach drift the same way for every
-surface, swapping only the corpus — the "swapped reference, not a new engine" guarantee (design
-spec §3, §8) made a single call site.
+Feedback drifts against the criteria of the JD it references; promotion against the rubric for its
+target level. One resolver so the streaming endpoints attach drift the same way for every surface,
+swapping only the corpus — the "swapped reference, not a new engine" guarantee (design spec §3, §8)
+made a single call site. Peer feedback is no longer a drift corpus; the promotion surface reads it
+separately as corroborating evidence (``resolve_peer_feedback`` remains for that read).
 """
 
 import uuid
@@ -68,9 +69,10 @@ def resolve_peer_feedback(session: Session, *, subject_id: uuid.UUID) -> list[st
 def resolve_drift_reference(session: Session, document: Document) -> DriftReference | None:
     """Build a document's drift reference, or ``None`` when it has no corpus to check against.
 
-    Feedback resolves the criteria of the JD it references; promotion resolves its employee's
-    peer feedback. A JD, a document missing its link (an unlinked feedback, a promotion without a
-    subject), or one whose reference is empty has no corpus and runs bias-only.
+    Feedback resolves the criteria of the JD it references; promotion resolves the rubric for its
+    target level (§8 — peer feedback is surfaced separately as corroborating evidence, not the drift
+    corpus). A JD, a document missing its link (an unlinked feedback, a promotion without a level),
+    or one whose reference is empty has no corpus and runs bias-only.
 
     Args:
         session: An open session.
@@ -82,7 +84,7 @@ def resolve_drift_reference(session: Session, document: Document) -> DriftRefere
     if document.doc_type is DocType.feedback and document.reference_jd_id is not None:
         criteria = resolve_jd_criteria(session, jd_document_id=document.reference_jd_id)
         return DriftReference(reference_text="\n".join(criteria)) if criteria else None
-    if document.doc_type is DocType.promotion and document.subject_id is not None:
-        blocks = resolve_peer_feedback(session, subject_id=document.subject_id)
-        return DriftReference(reference_text="\n\n".join(blocks)) if blocks else None
+    if document.doc_type is DocType.promotion and document.role_title is not None:
+        criteria = resolve_promotion_rubric(session, level_label=document.role_title)
+        return DriftReference(reference_text="\n".join(criteria)) if criteria else None
     return None
