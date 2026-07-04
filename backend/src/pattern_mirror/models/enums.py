@@ -117,6 +117,7 @@ class AgentName(StrEnum):
     skeptic = auto()
     categorizer = auto()
     citation = auto()
+    jd_criteria_drafter = auto()
 
 
 class DictionaryAdditionStatus(StrEnum):

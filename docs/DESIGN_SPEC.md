@@ -51,6 +51,8 @@ JD Studio uses a **two-layer latency model**:
 
 The two layers feel like one experience to the manager — they see flags appear, some instantly, some a few seconds later, all dismissible with the same gesture.
 
+On **Publish JD**, an extraction agent drafts the role's assessment criteria from the JD text; the manager reviews and edits them in a confirm step, and only the confirmed set is stored as the reference the Feedback Checkpoint drift check is measured against. The criteria are AI-drafted, manager-*confirmed* — the confirm gate keeps unverified model output out of the drift reference (#122).
+
 #### View 2 — Feedback Checkpoint
 
 The manager's writing surface for interview feedback. Before submitting feedback through UBS systems, the manager pastes their draft into Checkpoint. Two checks run in parallel:
@@ -247,7 +249,7 @@ The current pipeline detects bias but does not propose alternatives. A dedicated
 1. The existing five-stage engine against the **general bias dictionary** — gender-coded, racial-coded, age-coded language, all SEA-scoped categories already in MVP scope.
 2. A **drift / coverage check** against the **promotion rubric** for the target level — which rubric criteria the writeup evidences.
 
-**Architecturally this is not a new agent.** It is the existing drift-check stage (already used in Feedback Checkpoint to compare interview feedback against JD criteria) with a swapped reference document — the promotion rubric instead of the JD. Same pattern, different reference corpus. The rubric is the promotion analogue of a role's JD criteria: manager-entered/seeded now, AI-drafted-with-confirm later.
+**Architecturally this is not a new agent.** It is the existing drift-check stage (already used in Feedback Checkpoint to compare interview feedback against JD criteria) with a swapped reference document — the promotion rubric instead of the JD. Same pattern, different reference corpus. The rubric is the promotion analogue of a role's JD criteria: seeded now for the rubric, while JD criteria are AI-drafted with a manager-confirm gate (JD Studio, #122).
 
 **Historical peer feedback (corroborating evidence).** UBS has an existing feedback system where employees can request feedback from anyone working with them — colleagues, managers, etc. — collected as three free-text fields stored in a relational database. The Promotion Writeup surfaces this alongside the rubric coverage as *corroborating evidence*: for each rubric criterion, whether peers evidence it — so a manager sees when peers already supply the evidence a writeup omits. This is not a second engine pass; the peer corroboration is **mocked as synthetic data** in MVP (a fact about the employee, not the writeup). Integration with the actual UBS feedback system, and inferring corroboration live, are post-MVP.
 

@@ -40,6 +40,11 @@ from pattern_mirror.services.documents import (
 )
 from pattern_mirror.services.drift_reference import resolve_drift_reference
 from pattern_mirror.services.interactions import deactivate_document_dismissals
+from pattern_mirror.services.jd_criteria import (
+    draft_jd_criteria,
+    list_jd_criteria,
+    replace_jd_criteria,
+)
 from pattern_mirror.services.run_registry import get_run_registry
 from pattern_mirror.services.streaming_analysis import stream_analysis_events
 
@@ -219,6 +224,82 @@ def get_promotion_context(
             for item in context.corroboration
         ],
     )
+
+
+class DraftJdCriteriaRequest(BaseModel):
+    """The JD's current text to draft criteria from (carried in the body, ahead of autosave)."""
+
+    content: str
+
+
+class ConfirmJdCriteriaRequest(BaseModel):
+    """The manager-confirmed criteria to persist as the JD's drift reference."""
+
+    criteria: list[str]
+
+
+class JdCriteriaResponse(BaseModel):
+    """A JD's criteria — drafted (unconfirmed) or confirmed, depending on the endpoint."""
+
+    criteria: list[str]
+
+
+@router.get(
+    "/documents/{doc_id}/jd-criteria",
+    summary="Read a JD's confirmed criteria",
+)
+def get_jd_criteria(
+    doc_id: uuid.UUID,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JdCriteriaResponse:
+    """Return the JD's confirmed criteria so the confirm step can pre-fill an edited set."""
+    criteria = list_jd_criteria(session, document_id=doc_id, owner_id=current_user.id)
+    return JdCriteriaResponse(criteria=criteria)
+
+
+@router.post(
+    "/documents/{doc_id}/jd-criteria/draft",
+    summary="Draft a JD's criteria from its text with the extraction agent",
+)
+def draft_criteria(
+    doc_id: uuid.UUID,
+    request: DraftJdCriteriaRequest,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JdCriteriaResponse:
+    """Draft criteria for the manager to review; persists only an audit row, not the drafts."""
+    settings = get_settings()
+    client = build_instructor_client(settings)
+    criteria = draft_jd_criteria(
+        session,
+        document_id=doc_id,
+        owner_id=current_user.id,
+        jd_text=request.content,
+        client=client,
+        model=settings.analysis_model,
+    )
+    return JdCriteriaResponse(criteria=criteria)
+
+
+@router.put(
+    "/documents/{doc_id}/jd-criteria",
+    summary="Confirm a JD's criteria, replacing its set",
+)
+def confirm_criteria(
+    doc_id: uuid.UUID,
+    request: ConfirmJdCriteriaRequest,
+    session: Annotated[Session, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> JdCriteriaResponse:
+    """Persist the manager-confirmed criteria as the JD's drift reference (idempotent replace)."""
+    criteria = replace_jd_criteria(
+        session,
+        document_id=doc_id,
+        owner_id=current_user.id,
+        texts=request.criteria,
+    )
+    return JdCriteriaResponse(criteria=criteria)
 
 
 @router.patch("/documents/{doc_id}", summary="Autosave a draft's text")
