@@ -10,14 +10,10 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CategorySummary } from '@/components/ui/category-summary'
-import { Editor } from '@/components/ui/editor'
 import { FlagCard } from '@/components/ui/flag-card'
 import { Legend } from '@/components/ui/legend'
-import { AutosaveStatus } from '@/components/surface/autosave-status'
-import {
-  SurfaceEditor,
-  type SurfaceEditorHandle,
-} from '@/components/surface/surface-editor'
+import { SurfaceEditorPane } from '@/components/surface/surface-editor-pane'
+import type { SurfaceEditorHandle } from '@/components/surface/surface-editor'
 import { useDocumentSession } from '@/components/surface/use-document-session'
 import { useFlagInteractions } from '@/components/surface/use-flag-interactions'
 
@@ -79,34 +75,18 @@ export function JdStudio() {
   return (
     <main className="flex h-[calc(100vh-7rem)] flex-col bg-surface">
       <div className="grid min-h-0 flex-1 grid-cols-[58%_42%]">
-        <div className="overflow-auto border-r border-border">
-          <Editor
-            title={session.title}
-            onTitleChange={session.setTitle}
-            titlePlaceholder="Untitled job description"
-            meta={
-              <span className="inline-flex items-center gap-1.5">
-                <span>
-                  Job description · {submitted ? 'submitted' : 'draft'}
-                </span>
-                {session.saveState !== 'idle' && <span aria-hidden>·</span>}
-                <AutosaveStatus state={session.saveState} />
-              </span>
-            }
-          >
-            <SurfaceEditor
-              ref={editorRef}
-              documentId={session.documentId}
-              editable={!readOnly}
-              initialContent={session.initialContent}
-              onTextChange={session.setContent}
-              onFlagsChange={setFlags}
-              onApplyRecommendation={applyRecommendation}
-              onDismissFlag={(flag) => dismiss(flag.id)}
-              resolvedFlagIds={resolvedFlagIds}
-            />
-          </Editor>
-        </div>
+        <SurfaceEditorPane
+          session={session}
+          editorRef={editorRef}
+          documentKindLabel="Job description"
+          titlePlaceholder="Untitled job description"
+          readOnly={readOnly}
+          submitted={submitted}
+          onFlagsChange={setFlags}
+          onApplyRecommendation={applyRecommendation}
+          onDismissFlag={(flag) => dismiss(flag.id)}
+          resolvedFlagIds={resolvedFlagIds}
+        />
 
         <aside className="overflow-auto bg-surface-alt p-5">
           <CategorySummary items={categoryItems} />
