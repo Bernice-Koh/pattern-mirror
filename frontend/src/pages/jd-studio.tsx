@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CategorySummary } from '@/components/ui/category-summary'
 import { FlagCard } from '@/components/ui/flag-card'
+import { JdCriteriaConfirm } from '@/components/ui/jd-criteria-confirm'
 import { Legend } from '@/components/ui/legend'
 import { SurfaceEditorPane } from '@/components/surface/surface-editor-pane'
 import type { SurfaceEditorHandle } from '@/components/surface/surface-editor'
@@ -29,6 +30,9 @@ export function JdStudio() {
   const { doc } = useSearch({ strict: false })
   const session = useDocumentSession('jd', doc)
   const [flags, setFlags] = useState<CitedFlag[]>([])
+  // Publishing a JD confirms its drift criteria first (#122); the modal drafts them, the manager
+  // edits, and confirming persists the set and then submits the document.
+  const [confirmOpen, setConfirmOpen] = useState(false)
   const editorRef = useRef<SurfaceEditorHandle>(null)
   const { resolutions, accept, dismiss, undo } = useFlagInteractions()
 
@@ -126,7 +130,7 @@ export function JdStudio() {
           <Button
             variant="primary"
             size="md"
-            onClick={session.submit}
+            onClick={() => setConfirmOpen(true)}
             disabled={
               !session.documentId ||
               session.submitState === 'submitting' ||
@@ -137,6 +141,19 @@ export function JdStudio() {
           </Button>
         </div>
       </footer>
+
+      {session.documentId && (
+        <JdCriteriaConfirm
+          open={confirmOpen}
+          documentId={session.documentId}
+          content={session.content}
+          onClose={() => setConfirmOpen(false)}
+          onConfirmed={() => {
+            setConfirmOpen(false)
+            session.submit()
+          }}
+        />
+      )}
     </main>
   )
 }
