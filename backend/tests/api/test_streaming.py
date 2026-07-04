@@ -17,9 +17,10 @@ from pattern_mirror.api.deps import get_current_user
 from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
 from pattern_mirror.models.documents import Document
-from pattern_mirror.models.enums import AnalysisRunStatus, DocType
-from pattern_mirror.models.identity import User
+from pattern_mirror.models.enums import AnalysisRunStatus, DocType, SubjectType
+from pattern_mirror.models.identity import Subject, User
 from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.peer_feedback import PeerFeedback
 from pattern_mirror.services.streaming_analysis import RunCompleted, StageCompleted
 
 pytestmark = pytest.mark.db
@@ -110,6 +111,42 @@ def test_feedback_run_attaches_the_drift_check(
     assert reference is not None
     assert reference.reference_text == "Python proficiency"
     # A drift run reuses the bias stages' client, so it is set whenever a reference resolves.
+    assert captured["drift_client"] is captured["contextual_client"]
+
+
+def test_promotion_run_attaches_the_drift_check(
+    stream_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    employee = Subject(subject_type=SubjectType.employee, legal_name="Promo Employee")
+    db_session.add(employee)
+    db_session.flush()
+    db_session.add(
+        PeerFeedback(
+            subject_id=employee.id,
+            author_label="Squad peer",
+            strengths="Owns the architecture",
+            development="Delegate more",
+            overall="Ready",
+            position=0,
+        )
+    )
+    promotion = Document(
+        owner_id=owner.id, doc_type=DocType.promotion, subject_id=employee.id, content="wu"
+    )
+    db_session.add(promotion)
+    db_session.flush()
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(streaming, "stream_analysis_events", _capture_stream(captured))
+
+    response = stream_client.post(
+        "/analyze/stream", json={"document_id": str(promotion.id), "content": "wu"}
+    )
+
+    assert response.status_code == 200
+    reference = captured["drift_reference"]
+    assert reference is not None
+    assert "Owns the architecture" in reference.reference_text
     assert captured["drift_client"] is captured["contextual_client"]
 
 
