@@ -6,6 +6,9 @@ export interface CoverageItem {
   addressed: boolean
   /** Overrides the default "addressed" / "not addressed" status text. */
   statusLabel?: string
+  /** A secondary signal (Promotion Writeup: whether peers evidence the criterion). Rendered as a
+   *  pill before the status, green when corroborated. */
+  corroboration?: { corroborated: boolean; label: string }
 }
 
 export interface CoverageListProps extends HTMLAttributes<HTMLDivElement> {
@@ -63,6 +66,18 @@ export function CoverageList({
               {item.addressed ? '✓' : '✕'}
             </span>
             <span className="flex-1 text-label text-ink">{item.label}</span>
+            {item.corroboration && (
+              <span
+                className={cn(
+                  'rounded-pill bg-chip-track px-2 py-0.5 text-meta',
+                  item.corroboration.corroborated
+                    ? 'text-green-positive'
+                    : 'text-ink-faint',
+                )}
+              >
+                {item.corroboration.label}
+              </span>
+            )}
             <span
               className={cn(
                 'text-meta',
