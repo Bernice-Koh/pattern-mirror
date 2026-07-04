@@ -10,6 +10,7 @@ const LEVEL = 'Director — Delivery Engineering'
 
 vi.mock('@tanstack/react-router', () => ({
   useSearch: () => ({ doc: 'doc-1' }),
+  useNavigate: () => vi.fn(),
 }))
 
 // A session with a stable document id, so the context and drift reads run.

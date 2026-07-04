@@ -8,6 +8,7 @@ import { FeedbackCheckpoint } from './feedback-checkpoint'
 
 vi.mock('@tanstack/react-router', () => ({
   useSearch: () => ({ doc: 'doc-1' }),
+  useNavigate: () => vi.fn(),
 }))
 
 // A submitted-context session with a stable document id, so the criteria and drift reads run.

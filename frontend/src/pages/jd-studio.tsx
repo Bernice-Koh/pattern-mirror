@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { useSearch } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   CATEGORY_LABELS,
   formatCitation,
@@ -28,6 +28,7 @@ const SUBMIT_LABELS = {
 export function JdStudio() {
   // A document opened from My Documents (#69) arrives as ?doc=<id>; absent for a fresh draft.
   const { doc } = useSearch({ strict: false })
+  const navigate = useNavigate()
   const session = useDocumentSession('jd', doc)
   const [flags, setFlags] = useState<CitedFlag[]>([])
   // Publishing a JD confirms its drift criteria first (#122); the modal drafts them, the manager
@@ -90,6 +91,7 @@ export function JdStudio() {
           onApplyRecommendation={applyRecommendation}
           onDismissFlag={(flag) => dismiss(flag.id)}
           resolvedFlagIds={resolvedFlagIds}
+          onClose={() => navigate({ to: '/pattern-dashboard' })}
         />
 
         <aside className="overflow-auto bg-surface-alt p-5">
