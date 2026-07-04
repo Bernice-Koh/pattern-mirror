@@ -18,7 +18,9 @@ from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import DocType, DocumentStatus, SubjectType, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
 from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.peer_corroboration import PeerCorroboration
 from pattern_mirror.models.peer_feedback import PeerFeedback
+from pattern_mirror.models.promotion_rubric import PromotionRubricCriterion
 
 
 def _user(db_session: Session, external_user_id: str) -> User:
@@ -240,6 +242,70 @@ def test_promotion_draft_carries_its_employee_subject(
     subject = db_session.get(Subject, promotion.subject_id)
     assert subject is not None
     assert subject.subject_type is SubjectType.employee
+
+
+@pytest.mark.db
+def test_seeds_promotion_rubric_criteria(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+
+    dataset = load_demo_dataset()
+    expected = sum(len(rubric.criteria) for rubric in dataset.promotion_rubrics)
+    seeded = db_session.scalar(select(func.count()).select_from(PromotionRubricCriterion))
+    assert expected > 0
+    assert seeded == expected
+
+
+@pytest.mark.db
+def test_seeds_peer_corroboration_for_employees(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+
+    dataset = load_demo_dataset()
+    seeded = db_session.scalar(select(func.count()).select_from(PeerCorroboration))
+    assert len(dataset.peer_corroboration) > 0
+    assert seeded == len(dataset.peer_corroboration)
+
+
+@pytest.mark.db
+def test_peer_corroboration_hangs_off_an_employee_subject(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+
+    row = db_session.scalar(select(PeerCorroboration).limit(1))
+    assert row is not None
+    subject = db_session.get(Subject, row.subject_id)
+    assert subject is not None
+    assert subject.subject_type is SubjectType.employee
+
+
+@pytest.mark.db
+def test_reseeding_does_not_duplicate_promotion_rubric(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+    first = db_session.scalar(select(func.count()).select_from(PromotionRubricCriterion))
+    seed_demo_content(db_session, store=blob_store)
+    db_session.flush()
+    second = db_session.scalar(select(func.count()).select_from(PromotionRubricCriterion))
+
+    assert second == first
+
+
+@pytest.mark.db
+def test_reseeding_does_not_duplicate_peer_corroboration(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+    first = db_session.scalar(select(func.count()).select_from(PeerCorroboration))
+    seed_demo_content(db_session, store=blob_store)
+    db_session.flush()
+    second = db_session.scalar(select(func.count()).select_from(PeerCorroboration))
+
+    assert second == first
 
 
 @pytest.mark.db

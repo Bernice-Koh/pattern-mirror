@@ -66,5 +66,19 @@
     {"subject_ref": "demo-emp-e2", "author_label": "Platform squad engineer", "strengths": "Victor knows our infrastructure better than anyone; the on-call runbooks are largely his work and they are excellent.", "development": "He can dominate design discussions and talk over quieter members. I would like him to listen more and let others land their ideas before he jumps in.", "overall": "Strong individual contributor; needs to grow as a collaborator before leading."},
     {"subject_ref": "demo-emp-e2", "author_label": "Cross-team partner", "strengths": "Reliable and deeply knowledgeable on platform internals. When something breaks at 3am, Victor is a safe pair of hands.", "development": "In shared design sessions he pushes his own solution hard and does not always bring the room with him.", "overall": "Great engineer. The leadership dimension is still developing."},
     {"subject_ref": "demo-emp-e2", "author_label": "Delivery partner engineer", "strengths": "Very sharp on systems and quick to diagnose production issues.", "development": "Would benefit from more patience with people who are still ramping up; he can come across as dismissive of other approaches.", "overall": "Solid, with clear room to grow on the people side."}
+  ],
+  "promotion_rubrics": [
+    {"level_label": "Director — Delivery Engineering", "criteria": ["Owns technical delivery of a major system", "Drives cross-team technical impact", "Makes strong system-design calls", "Grows other engineers"]},
+    {"level_label": "Director — Platform Engineering", "criteria": ["Owns technical delivery of a major system", "Deep technical judgment on platform internals", "Brings the team along as a leader", "Grows other engineers"]}
+  ],
+  "peer_corroboration": [
+    {"subject_ref": "demo-emp-e1", "criterion": "Owns technical delivery of a major system", "corroborated": true, "evidence": "Nadia owns the technical direction of our settlement pipeline end to end."},
+    {"subject_ref": "demo-emp-e1", "criterion": "Drives cross-team technical impact", "corroborated": true, "evidence": "When our two systems had to integrate, Nadia drove the design review and caught failure modes none of us had seen."},
+    {"subject_ref": "demo-emp-e1", "criterion": "Makes strong system-design calls", "corroborated": true, "evidence": "She is who we go to when a hard system-design call has to be made."},
+    {"subject_ref": "demo-emp-e1", "criterion": "Grows other engineers", "corroborated": true, "evidence": "Junior engineers learn system design directly from her."},
+    {"subject_ref": "demo-emp-e2", "criterion": "Owns technical delivery of a major system", "corroborated": true, "evidence": "the on-call runbooks are largely his work and they are excellent."},
+    {"subject_ref": "demo-emp-e2", "criterion": "Deep technical judgment on platform internals", "corroborated": true, "evidence": "Reliable and deeply knowledgeable on platform internals."},
+    {"subject_ref": "demo-emp-e2", "criterion": "Brings the team along as a leader", "corroborated": false, "evidence": null},
+    {"subject_ref": "demo-emp-e2", "criterion": "Grows other engineers", "corroborated": false, "evidence": null}
   ]
 }

@@ -45,10 +45,10 @@ class DocumentSeed(BaseModel):
 
 
 class PeerFeedbackSeed(BaseModel):
-    """One peer's three-field feedback about an employee, the promotion drift reference (#119).
+    """One peer's three-field feedback about an employee, background for the writeup (#119).
 
-    ``subject_ref`` links the feedback to the employee it is about; the drift check resolves an
-    employee's rows into a single reference text a promotion writeup is measured against (§8).
+    ``subject_ref`` links the feedback to the employee it is about. The Promotion Writeup surfaces
+    it as the "what peers say" narrative; the drift check itself runs against the rubric (§8).
     """
 
     subject_ref: str
@@ -58,13 +58,40 @@ class PeerFeedbackSeed(BaseModel):
     overall: str
 
 
+class PromotionRubricSeed(BaseModel):
+    """A target level's promotion rubric: the criteria a writeup's drift check is measured against.
+
+    ``level_label`` matches a promotion writeup's ``role_title``, so every promotion to a level
+    shares one rubric — the promotion analogue of a role's JD criteria (#121).
+    """
+
+    level_label: str
+    criteria: list[str]
+
+
+class PeerCorroborationSeed(BaseModel):
+    """Whether an employee's peers evidence one rubric criterion, with the supporting quote (#121).
+
+    ``subject_ref`` links it to the employee; ``criterion`` matches a rubric criterion text.
+    Mocked for the MVP like peer feedback (§8): it is a fact about the employee, not the writeup.
+    """
+
+    subject_ref: str
+    criterion: str
+    corroborated: bool
+    evidence: str | None = None
+
+
 class DemoDataset(BaseModel):
-    """The whole dataset: the subjects, the documents written about (or for) them, and the
-    peer feedback held on the employees a promotion writeup is checked against."""
+    """The whole dataset: the subjects, the documents written about (or for) them, the peer feedback
+    on the employees, and the promotion rubrics + peer corroboration a promotion writeup is checked
+    against."""
 
     subjects: list[SubjectSeed]
     documents: list[DocumentSeed]
     peer_feedback: list[PeerFeedbackSeed] = []
+    promotion_rubrics: list[PromotionRubricSeed] = []
+    peer_corroboration: list[PeerCorroborationSeed] = []
 
     @model_validator(mode="after")
     def _refs_resolve(self) -> "DemoDataset":
@@ -89,10 +116,29 @@ class DemoDataset(BaseModel):
         misdirected = {
             peer.subject_ref for peer in self.peer_feedback if peer.subject_ref not in employee_refs
         }
+        misdirected |= {
+            entry.subject_ref
+            for entry in self.peer_corroboration
+            if entry.subject_ref not in employee_refs
+        }
         if misdirected:
             raise ValueError(
-                f"peer_feedback subject_ref(s) not an employee subject: {sorted(misdirected)}"
+                f"peer feedback/corroboration subject_ref(s) not an employee subject: "
+                f"{sorted(misdirected)}"
             )
+
+        # Every promotion writeup must have a rubric for its level, or its drift check has no
+        # reference — a missing rubric is a seeding gap that must fail at load, not silently at run.
+        rubric_levels = {rubric.level_label for rubric in self.promotion_rubrics}
+        uncovered = {
+            document.role_title
+            for document in self.documents
+            if document.doc_type is DocType.promotion
+            and document.role_title is not None
+            and document.role_title not in rubric_levels
+        }
+        if uncovered:
+            raise ValueError(f"promotion role_title(s) with no rubric: {sorted(uncovered)}")
         return self
 
 
