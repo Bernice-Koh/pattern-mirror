@@ -9,6 +9,7 @@ import { JdStudio } from './jd-studio'
 // document-open search param (#69), so the search reads as empty.
 vi.mock('@tanstack/react-router', () => ({
   useSearch: () => ({}),
+  useNavigate: () => vi.fn(),
 }))
 
 const FLAG = vi.hoisted(() => ({

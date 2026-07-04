@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { useNavigate } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Legend } from '@/components/ui/legend'
 import { SurfaceEditorPane } from '@/components/surface/surface-editor-pane'
@@ -33,6 +34,7 @@ export function CheckpointLayout({
   footerNote,
 }: CheckpointLayoutProps) {
   const { session } = surface
+  const navigate = useNavigate()
 
   return (
     <main className="flex h-[calc(100vh-7rem)] flex-col bg-surface">
@@ -53,6 +55,7 @@ export function CheckpointLayout({
           onDismissFlag={(flag) => surface.dismiss(flag.id)}
           resolvedFlagIds={surface.resolvedFlagIds}
           onRunComplete={surface.refetchFindings}
+          onClose={() => navigate({ to: '/pattern-dashboard' })}
         />
 
         <aside className="flex flex-col gap-4 overflow-auto bg-surface-alt p-5">
