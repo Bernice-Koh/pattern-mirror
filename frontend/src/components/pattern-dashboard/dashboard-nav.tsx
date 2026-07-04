@@ -2,9 +2,10 @@ import { useAuth } from '@/lib/use-auth'
 
 export type DashboardView = 'patterns' | 'documents' | 'profile' | 'settings'
 
+// My documents leads — it's the manager's entry point and the dashboard's default view.
 const NAV_ITEMS: { view: DashboardView; label: string }[] = [
-  { view: 'patterns', label: 'Your patterns' },
   { view: 'documents', label: 'My documents' },
+  { view: 'patterns', label: 'Your patterns' },
   { view: 'profile', label: 'Profile' },
   { view: 'settings', label: 'Settings' },
 ]
