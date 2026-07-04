@@ -244,4 +244,32 @@ describe('useFlagStream', () => {
     expect(recheckAnalysis).not.toHaveBeenCalled()
     expect(result.current.contextualFlags).toEqual([])
   })
+
+  it('does not open the automatic stream while autoRun is false', async () => {
+    streamEvents = [flagEvent('ctx-1', 'contextual')]
+    const { rerender } = renderHook(
+      ({ t }) => useFlagStream('doc-1', t, undefined, false),
+      { initialProps: { t: '' } },
+    )
+
+    act(() => rerender({ t: 'a reopened draft, not yet edited' }))
+    await idle()
+
+    expect(streamAnalysis).not.toHaveBeenCalled()
+  })
+
+  it('still allows a manual re-check while autoRun is false', async () => {
+    recheckEvents = [
+      flagEvent('ctx-9', 'contextual'),
+      { type: 'done', analysis_run_id: 'r', status: 'complete', flag_count: 1 },
+    ]
+    const { result } = renderHook(() =>
+      useFlagStream('doc-1', 'text', undefined, false),
+    )
+
+    act(() => result.current.recheck())
+    await flush()
+
+    expect(result.current.contextualFlags.map((f) => f.id)).toEqual(['ctx-9'])
+  })
 })

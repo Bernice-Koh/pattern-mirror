@@ -13,10 +13,11 @@ from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from pattern_mirror.core.errors import DocumentNotFoundError
-from pattern_mirror.models.documents import Document
+from pattern_mirror.models.documents import AnalysisRun, Document
+from pattern_mirror.models.engine import Flag
 from pattern_mirror.models.enums import DocType, DocumentStatus
 from pattern_mirror.models.peer_corroboration import PeerCorroboration
 from pattern_mirror.services.drift_reference import resolve_jd_criteria, resolve_promotion_rubric
@@ -67,6 +68,45 @@ def get_draft(session: Session, *, document_id: uuid.UUID, owner_id: uuid.UUID) 
         DocumentNotFoundError: if the document is absent or owned by another user.
     """
     return _owned_document(session, document_id, owner_id)
+
+
+def list_flags(session: Session, *, document_id: uuid.UUID, owner_id: uuid.UUID) -> list[Flag]:
+    """Return a document's latest-run, un-suppressed bias flags so a surface can re-hydrate on open.
+
+    The surfaces render the current run only, so this returns the surfaced flags of the most recent
+    run that produced any — suppressed ones (dismissed or GDOR-ruled) stay excluded, which is what
+    keeps a dismissed flag from re-appearing when the document is reopened. The citation each flag
+    is serialised with is eager-loaded here. A foreign document is treated as absent.
+
+    Mirrors ``services.drift_findings.list_drift_findings`` — bias flags are the direct analog on
+    the ``flags`` table, ordered by document position rather than creation time.
+
+    Raises:
+        DocumentNotFoundError: if the document is absent or owned by another user.
+    """
+    _owned_document(session, document_id, owner_id)
+
+    latest_run_id = session.scalars(
+        select(Flag.analysis_run_id)
+        .join(AnalysisRun, AnalysisRun.id == Flag.analysis_run_id)
+        .where(Flag.document_id == document_id)
+        .order_by(AnalysisRun.started_at.desc())
+        .limit(1)
+    ).first()
+    if latest_run_id is None:
+        return []
+
+    return list(
+        session.scalars(
+            select(Flag)
+            .where(
+                Flag.analysis_run_id == latest_run_id,
+                Flag.suppressed.is_(False),
+            )
+            .options(selectinload(Flag.citation))
+            .order_by(Flag.start_offset, Flag.id)
+        ).all()
+    )
 
 
 @dataclass(frozen=True)
