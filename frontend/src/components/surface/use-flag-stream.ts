@@ -23,12 +23,16 @@ const STREAM_IDLE_MS = 3000
  *    current value is what a re-check analyses.
  *  @param onRunComplete Fired with the run id when a run reaches its terminal `done` event, so a
  *    surface can read side outputs the stream doesn't carry (Feedback Checkpoint's drift findings).
+ *  @param autoRun Gates only the automatic typing-pause run: false suspends it so a reopened
+ *    document shows its re-hydrated flags rather than paying a fresh contextual pass on open (#130).
+ *    `recheck` stays available regardless, so a manual re-check still works before any edit.
  *  @returns The accumulated contextual flags, a `recheck` trigger, and `isRechecking`.
  */
 export function useFlagStream(
   documentId: string | null,
   text: string,
   onRunComplete?: (runId: string) => void,
+  autoRun = true,
 ): {
   contextualFlags: CitedFlag[]
   recheck: () => void
@@ -45,7 +49,7 @@ export function useFlagStream(
   }, [onRunComplete])
 
   useEffect(() => {
-    if (!documentId || debouncedText.length === 0) return
+    if (!documentId || debouncedText.length === 0 || !autoRun) return
 
     const docId = documentId
     const controller = new AbortController()
@@ -82,7 +86,7 @@ export function useFlagStream(
     void consume()
 
     return () => controller.abort()
-  }, [documentId, debouncedText])
+  }, [documentId, debouncedText, autoRun])
 
   // Resuming typing supersedes the in-flight run before the next pause settles.
   useEffect(() => {

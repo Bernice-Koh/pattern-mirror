@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -21,6 +22,7 @@ import {
   type CitedFlag,
 } from '@/lib/analyze-contract'
 import { analyzeDocument } from '@/lib/analyze-client'
+import { listFlags } from '@/lib/flags-client'
 import { useDebouncedValue } from '@/lib/use-debounced-value'
 import { Button } from '@/components/ui/button'
 import { FlagPopover } from '@/components/ui/flag-popover'
@@ -113,6 +115,22 @@ export const SurfaceEditor = forwardRef<
   const flagsById = useRef<Map<string, CitedFlag>>(new Map())
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // On open a document shows its persisted flags; the live layers take over only once the manager
+  // edits or re-checks, so a reopened draft skips a wasteful re-run and a submitted document shows
+  // its flags at all (its live layers stay suspended). `liveActive` latches on and never reverts.
+  const [liveActive, setLiveActive] = useState(false)
+  const liveActiveRef = useRef(false)
+  const initialContentRef = useRef(initialContent)
+  useEffect(() => {
+    initialContentRef.current = initialContent
+  }, [initialContent])
+  const goLive = useCallback(() => {
+    if (!liveActiveRef.current) {
+      liveActiveRef.current = true
+      setLiveActive(true)
+    }
+  }, [])
+
   // Read-only suspends both analysis layers: a submitted document is shown as saved, not re-run.
   const activeDocumentId = editable ? documentId : null
 
@@ -124,10 +142,26 @@ export const SurfaceEditor = forwardRef<
       attributes: { class: 'jd-prose' },
       handleKeyDown: (_view, event) => event.key === 'Enter',
     },
-    onUpdate: ({ editor }) => setText(editor.getText()),
+    onUpdate: ({ editor }) => {
+      const next = editor.getText()
+      setText(next)
+      // A real change (not the restored text re-emitted) hands the surface to the live layers.
+      if (next !== initialContentRef.current) goLive()
+    },
   })
 
   const debouncedText = useDebouncedValue(text, ANALYZE_DEBOUNCE_MS)
+
+  // Re-hydrate the last run's surfaced flags on open; disabled once live, which keeps the cached
+  // result from overwriting live flags. Any failure falls back to no flags (the editor's policy).
+  const { data: storedFlags } = useQuery({
+    queryKey: ['stored-flags', documentId],
+    queryFn: () => {
+      if (!documentId) throw new Error('stored flags require a document')
+      return listFlags(documentId)
+    },
+    enabled: !!documentId && !liveActive,
+  })
 
   const { data } = useQuery({
     queryKey: ['analyze', activeDocumentId, debouncedText],
@@ -139,22 +173,33 @@ export const SurfaceEditor = forwardRef<
         signal,
       )
     },
-    enabled: !!activeDocumentId && debouncedText.length > 0,
+    enabled: !!activeDocumentId && debouncedText.length > 0 && liveActive,
     placeholderData: keepPreviousData,
   })
 
   // Layer 2 streams its contextual flags off the session's document; a re-check re-runs
-  // that same stream on demand into the same accumulator.
+  // that same stream on demand into the same accumulator. Its automatic pass waits for `liveActive`.
   const { contextualFlags, recheck, isRechecking } = useFlagStream(
     activeDocumentId,
     text,
     onRunComplete,
+    liveActive,
   )
 
+  // Before the first edit/re-check, the panel is the re-hydrated set; after, the live layers own it.
   const flags = useMemo(
-    () => [...(data?.flags ?? []), ...contextualFlags],
-    [data, contextualFlags],
+    () =>
+      liveActive
+        ? [...(data?.flags ?? []), ...contextualFlags]
+        : (storedFlags ?? []),
+    [liveActive, data, contextualFlags, storedFlags],
   )
+
+  // A manual re-check is a live action even before any edit, so it hands over to the live layers.
+  const handleRecheck = useCallback(() => {
+    goLive()
+    recheck()
+  }, [goLive, recheck])
 
   // Resolved flags drop out of the editor's underlines and hover map at once; the panel
   // keeps dismissed ones (greyed, with Undo), but a stale underline never lingers here.
@@ -250,7 +295,7 @@ export const SurfaceEditor = forwardRef<
           <Button
             variant="secondary"
             size="sm"
-            onClick={recheck}
+            onClick={handleRecheck}
             disabled={!documentId || isRechecking}
           >
             <RecheckIcon />
