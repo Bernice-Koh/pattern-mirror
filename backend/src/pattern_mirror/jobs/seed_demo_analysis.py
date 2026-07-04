@@ -12,6 +12,8 @@ manager submitted live already has runs (they fire while editing), so it is skip
 demo documents have none, so they are the ones primed. A re-run is a no-op.
 """
 
+from collections import deque
+
 import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -56,20 +58,22 @@ def seed_demo_analysis(
     for document in documents:
         content = document.submitted_content or document.content
         drift_reference = resolve_drift_reference(session, document)
-        # Drain the generator: each stage persists and commits internally.
-        for _ in stream_analysis_events(
-            session,
-            document_id=document.id,
-            content=content,
-            doc_type=document.doc_type,
-            registry=registry,
-            contextual_client=client,
-            judge_client=client,
-            recommendations_client=client,
-            drift_client=client if drift_reference is not None else None,
-            drift_reference=drift_reference,
-        ):
-            pass
+        # Drain the generator to run it — each stage persists and commits internally.
+        deque(
+            stream_analysis_events(
+                session,
+                document_id=document.id,
+                content=content,
+                doc_type=document.doc_type,
+                registry=registry,
+                contextual_client=client,
+                judge_client=client,
+                recommendations_client=client,
+                drift_client=client if drift_reference is not None else None,
+                drift_reference=drift_reference,
+            ),
+            maxlen=0,
+        )
         _log.info(
             "demo.document_analysed",
             document_id=str(document.id),
@@ -90,5 +94,5 @@ def main() -> None:
     _log.info("demo.analysis_seeded", documents=count)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()
