@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 from pattern_mirror.core.errors import DocumentNotFoundError
 from pattern_mirror.models.documents import Document
 from pattern_mirror.models.enums import DocType, DocumentStatus
-from pattern_mirror.services.drift_reference import resolve_jd_criteria
+from pattern_mirror.models.peer_corroboration import PeerCorroboration
+from pattern_mirror.services.drift_reference import resolve_jd_criteria, resolve_promotion_rubric
 
 _log = structlog.get_logger("pattern_mirror.services.documents")
 
@@ -101,6 +102,76 @@ def resolve_feedback_context(
         subject_id=document.subject_id,
         subject_name=document.subject.legal_name if document.subject is not None else None,
         criteria=criteria,
+    )
+
+
+@dataclass(frozen=True)
+class PeerCorroborationView:
+    """One rubric criterion and whether the employee's peers evidence it, with the peer quote."""
+
+    criterion: str
+    corroborated: bool
+    evidence: str | None
+
+
+@dataclass(frozen=True)
+class PromotionContext:
+    """What the Promotion Writeup surface shows above the editor: the employee and target level it
+    is about, the rubric the writeup is checked against, and what peers say for each criterion."""
+
+    role_title: str | None
+    subject_id: uuid.UUID | None
+    subject_name: str | None
+    criteria: list[str]
+    corroboration: list[PeerCorroborationView]
+
+
+def _resolve_peer_corroboration(
+    session: Session, *, subject_id: uuid.UUID
+) -> list[PeerCorroborationView]:
+    """Return an employee's peer corroboration against the rubric, in stated order."""
+    rows = session.scalars(
+        select(PeerCorroboration)
+        .where(PeerCorroboration.subject_id == subject_id)
+        .order_by(PeerCorroboration.position)
+    ).all()
+    return [
+        PeerCorroborationView(
+            criterion=row.criterion, corroborated=row.corroborated, evidence=row.evidence
+        )
+        for row in rows
+    ]
+
+
+def resolve_promotion_context(
+    session: Session, *, document_id: uuid.UUID, owner_id: uuid.UUID
+) -> PromotionContext:
+    """Return the rubric bar, context chips, and peer corroboration for a promotion surface.
+
+    The rubric resolves through the writeup's target level (``role_title``); the corroboration —
+    what peers say for each criterion — through its ``subject_id`` (#121). A promotion with no level
+    returns an empty rubric and the surface renders bias-only.
+
+    Raises:
+        DocumentNotFoundError: if the document is absent or owned by another user.
+    """
+    document = _owned_document(session, document_id, owner_id)
+    criteria = (
+        resolve_promotion_rubric(session, level_label=document.role_title)
+        if document.role_title is not None
+        else []
+    )
+    corroboration = (
+        _resolve_peer_corroboration(session, subject_id=document.subject_id)
+        if document.subject_id is not None
+        else []
+    )
+    return PromotionContext(
+        role_title=document.role_title,
+        subject_id=document.subject_id,
+        subject_name=document.subject.legal_name if document.subject is not None else None,
+        criteria=criteria,
+        corroboration=corroboration,
     )
 
 
