@@ -34,9 +34,11 @@ from pattern_mirror.core.errors import (
     AdditionAlreadyDecidedError,
     DictionaryEntryExistsError,
     DocumentNotFoundError,
+    DocumentTypeMismatchError,
     DriftFindingNotFoundError,
     FlagNotFoundError,
     InvalidCredentialsError,
+    LlmClientUnavailableError,
     NotAuthenticatedError,
     NotAuthorizedError,
     PatternMirrorError,
@@ -102,6 +104,15 @@ def _handle_conflict(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+def _handle_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    # A dependency the action needs (the Anthropic client) is not configured: 503, not a fault
+    # in the request. The client can fall back (e.g. to manual criteria entry).
+    return JSONResponse(
+        status_code=503,
+        content={"error": type(exc).__name__, "detail": str(exc)},
+    )
+
+
 def create_app() -> FastAPI:
     """Build and configure the FastAPI application.
 
@@ -130,6 +141,8 @@ def create_app() -> FastAPI:
     app.add_exception_handler(NotAuthorizedError, _handle_forbidden)
     app.add_exception_handler(AdditionAlreadyDecidedError, _handle_conflict)
     app.add_exception_handler(DictionaryEntryExistsError, _handle_conflict)
+    app.add_exception_handler(DocumentTypeMismatchError, _handle_conflict)
+    app.add_exception_handler(LlmClientUnavailableError, _handle_unavailable)
     app.add_exception_handler(PatternMirrorError, _handle_domain_error)
     app.include_router(health.router)
     app.include_router(auth.router)
