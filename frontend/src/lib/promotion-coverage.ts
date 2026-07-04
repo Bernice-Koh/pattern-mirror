@@ -18,10 +18,13 @@ function normalise(text: string): string {
   return text.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
+// Quote each criterion so the long rubric phrases read as distinct items rather than running
+// together in the sentence.
 function formatList(items: string[]): string {
-  if (items.length === 1) return items[0]
-  if (items.length === 2) return `${items[0]} and ${items[1]}`
-  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`
+  const quoted = items.map((item) => `“${item}”`)
+  if (quoted.length === 1) return quoted[0]
+  if (quoted.length === 2) return `${quoted[0]} and ${quoted[1]}`
+  return `${quoted.slice(0, -1).join(', ')}, and ${quoted[quoted.length - 1]}`
 }
 
 /** Build one coverage row per rubric criterion: whether the writeup evidences it (live drift) and

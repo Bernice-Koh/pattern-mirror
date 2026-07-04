@@ -101,7 +101,7 @@ describe('derivePeerSynthesis', () => {
   it('prompts to run a check before there are findings', () => {
     const result = derivePeerSynthesis([], CORROBORATION)
 
-    expect(result?.lead).toContain('Owns delivery and Cross-team impact')
+    expect(result?.lead).toContain('“Owns delivery” and “Cross-team impact”')
     expect(result?.synthesis).toMatch(/run a check/i)
   })
 

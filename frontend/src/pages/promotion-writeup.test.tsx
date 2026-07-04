@@ -152,7 +152,7 @@ describe('PromotionWriteup', () => {
     )
     // Cross-team impact is peer-backed but not evidenced by the writeup — the panel names the gap.
     expect(
-      screen.getByText(/doesn’t yet evidence Cross-team impact/),
+      screen.getByText(/doesn’t yet evidence “Cross-team impact”/),
     ).toBeInTheDocument()
     expect(screen.getByText(/not yet in yours/)).toBeInTheDocument()
   })
