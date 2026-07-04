@@ -69,7 +69,7 @@ export function CoverageList({
             {item.corroboration && (
               <span
                 className={cn(
-                  'rounded-pill bg-chip-track px-2 py-0.5 text-meta',
+                  'shrink-0 rounded-pill bg-chip-track px-2 py-0.5 text-meta whitespace-nowrap',
                   item.corroboration.corroborated
                     ? 'text-green-positive'
                     : 'text-ink-faint',
@@ -80,7 +80,7 @@ export function CoverageList({
             )}
             <span
               className={cn(
-                'text-meta',
+                'w-28 shrink-0 text-right text-meta',
                 item.addressed ? 'text-green-positive' : 'text-ink-faint',
               )}
             >
