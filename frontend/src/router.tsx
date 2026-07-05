@@ -4,6 +4,7 @@ import {
   createRouter,
 } from '@tanstack/react-router'
 import { AppShell } from '@/components/app-shell'
+import { RouteError } from '@/components/route-error'
 import { JdStudio } from '@/pages/jd-studio'
 import { FeedbackCheckpoint } from '@/pages/feedback-checkpoint'
 import { PatternDashboard } from '@/pages/pattern-dashboard'
@@ -127,7 +128,10 @@ const routeTree = rootRoute.addChildren([
   ]),
 ])
 
-export const router = createRouter({ routeTree })
+export const router = createRouter({
+  routeTree,
+  defaultErrorComponent: RouteError,
+})
 
 declare module '@tanstack/react-router' {
   interface Register {

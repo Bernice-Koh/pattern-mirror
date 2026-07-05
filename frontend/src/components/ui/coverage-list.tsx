@@ -48,6 +48,11 @@ export function CoverageList({
         )}
       </div>
       <div className="flex flex-col">
+        {items.length === 0 && (
+          <p className="py-2.5 text-label text-ink-muted">
+            No criteria to check against yet.
+          </p>
+        )}
         {items.map((item, index) => (
           <div
             key={item.label}

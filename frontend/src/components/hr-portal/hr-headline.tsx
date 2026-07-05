@@ -62,14 +62,20 @@ export function HrHeadline({ report }: Readonly<HrHeadlineProps>) {
 
   return (
     <>
-      <div className="mb-6 grid grid-cols-2 gap-4.5 md:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4.5">
         <StatCard
           label="Bias-coded language"
           value={
-            drop !== null && drop > 0 ? (
+            drop !== null && drop !== 0 ? (
               <>
-                <span className="text-green-positive">↓</span>{' '}
-                {Math.round(drop * 100)}%
+                <span
+                  className={
+                    drop > 0 ? 'text-green-positive' : 'text-red-primary'
+                  }
+                >
+                  {drop > 0 ? '↓' : '↑'}
+                </span>{' '}
+                {Math.abs(Math.round(drop * 100))}%
               </>
             ) : (
               PENDING
@@ -81,16 +87,6 @@ export function HrHeadline({ report }: Readonly<HrHeadlineProps>) {
           label="Flagged language revised"
           value={adoption !== null ? percent(adoption) : PENDING}
           delta="before submission this year"
-        />
-        <StatCard
-          label="Recurring habits resolved"
-          value={PENDING}
-          delta="firm-wide this year"
-        />
-        <StatCard
-          label="Documents checked"
-          value={PENDING}
-          delta="firm-wide this year"
         />
       </div>
 

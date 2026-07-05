@@ -62,9 +62,9 @@ export function BarChart({
               ))}
             </div>
             <div className="relative flex h-full items-end gap-3.5">
-              {data.map((datum) => (
+              {data.map((datum, index) => (
                 <div
-                  key={datum.label}
+                  key={index}
                   className="flex h-full flex-1 items-end justify-center"
                 >
                   <span
@@ -84,9 +84,9 @@ export function BarChart({
           </div>
 
           <div className="mt-2 flex gap-3.5">
-            {data.map((datum) => (
+            {data.map((datum, index) => (
               <span
-                key={datum.label}
+                key={index}
                 className="flex-1 text-center text-meta text-ink-faint"
               >
                 {datum.label}
