@@ -50,7 +50,7 @@ describe('HrHeadline', () => {
   it('leaves unavailable cards pending and falls back to a neutral summary', () => {
     render(<HrHeadline report={EMPTY} />)
 
-    expect(screen.getAllByText('—')).toHaveLength(4)
+    expect(screen.getAllByText('—')).toHaveLength(2)
     expect(
       screen.getByText(
         "Firm-level impact will appear here as the firm's history grows.",

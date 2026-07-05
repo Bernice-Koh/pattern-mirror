@@ -27,7 +27,11 @@ export function ReviewQueuePreview() {
       title="Words to review"
       caption="New bias-coded phrases waiting for review"
     >
-      {items.length === 0 ? (
+      {additions.isError ? (
+        <ReportEmptyState message="Couldn’t load the review queue" />
+      ) : additions.isPending ? (
+        <ReportEmptyState message="Loading…" />
+      ) : items.length === 0 ? (
         <ReportEmptyState message="The review queue is clear" />
       ) : (
         <>

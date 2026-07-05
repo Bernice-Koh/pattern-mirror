@@ -46,7 +46,13 @@ export function HrDictionaryReview() {
           as a dictionary term, or reject and defer.
         </p>
 
-        {additions.isPending ? (
+        {additions.isError ? (
+          <div className="rounded-card bg-surface p-10 text-center shadow-ring-card">
+            <p className="font-sans text-body-sm text-ink-faint">
+              Couldn’t load the review queue. Try again.
+            </p>
+          </div>
+        ) : additions.isPending ? (
           <p className="font-sans text-label text-ink-faint">Loading…</p>
         ) : items.length === 0 ? (
           <div className="rounded-card bg-surface p-10 text-center shadow-ring-card">
