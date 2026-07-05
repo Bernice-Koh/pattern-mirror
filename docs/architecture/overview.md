@@ -146,7 +146,8 @@ cell-suppressed, as above.
   interface) holds only resume/CV binaries. The engine never reads blobs.
 - Dismissing a flag never deletes it — a dismissal is its own row, matched by a
   document-scoped signature, which is what lets the Suppression Module honour it and
-  the dashboard analyse it.
+  the dashboard analyse it. How that identity works:
+  [flags-and-suppression.md](flags-and-suppression.md).
 
 ## Configuration
 
