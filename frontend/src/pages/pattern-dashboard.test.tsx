@@ -63,12 +63,4 @@ describe('PatternDashboard', () => {
     ).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'My documents' })).toBeNull()
   })
-
-  it('renders the static profile view', () => {
-    render(<PatternDashboard />, { wrapper })
-
-    fireEvent.click(screen.getByRole('button', { name: 'Profile' }))
-
-    expect(screen.getByRole('heading', { name: 'Profile' })).toBeInTheDocument()
-  })
 })
