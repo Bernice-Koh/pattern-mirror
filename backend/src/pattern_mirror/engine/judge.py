@@ -126,6 +126,7 @@ def _sample_order(flag_count: int, seed: int) -> list[int]:
     Deterministic and reproducible, and distinct across seeds, so it averages out prompt
     position bias without a PRNG — the ordering carries no security or randomness requirement.
     """
+
     def key(flag_id: int) -> str:
         return hashlib.sha256(f"{seed}:{flag_id}".encode()).hexdigest()
 
