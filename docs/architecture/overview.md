@@ -76,8 +76,8 @@ What the split buys:
 - **A second model checks the first.** The Judge (Haiku) re-examines each flag against
   the document text itself — not the Contextual Pass's (Sonnet) explanation — so its
   verdict is independent of the reasoning it is checking. It answers a fixed rubric N
-  times; a flag's confidence is the fraction of runs agreeing it's biased. ADR-0013
-  records the design; a dedicated page on the Judge is planned.
+  times; a flag's confidence is the fraction of runs agreeing it's biased. The full
+  design: [llm-judge.md](llm-judge.md).
 - **Nothing is silently deleted.** Every dropped or suppressed flag is persisted with
   the reason — the audit trail is a product feature (log-everything-suppress-in-UI),
   and the Pattern Dashboard later mines these same rows.
