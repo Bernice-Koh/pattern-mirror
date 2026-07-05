@@ -11,7 +11,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import TIMESTAMP, ForeignKey, String, Text
+from sqlalchemy import TIMESTAMP, ForeignKey, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from pattern_mirror.db.base import Base
@@ -61,6 +62,10 @@ class PendingDictionaryAddition(CreatedAtMixin, Base):
     lemma_key: Mapped[str] = mapped_column(String)
     proposed_category: Mapped[BiasCategory] = mapped_column(bias_category_enum)
     explanation: Mapped[str] = mapped_column(Text)
+    # The Proposer's neutral rewrites, carried to the live dictionary entry on approval (#8).
+    recommended_alternatives: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
     status: Mapped[DictionaryAdditionStatus] = mapped_column(
         dictionary_addition_status_enum,
         server_default=DictionaryAdditionStatus.pending.value,

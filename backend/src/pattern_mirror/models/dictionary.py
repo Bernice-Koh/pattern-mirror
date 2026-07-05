@@ -10,6 +10,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from pattern_mirror.db.base import Base
@@ -44,6 +45,11 @@ class Dictionary(TimestampMixin, Base):
     lemma_key: Mapped[str] = mapped_column(String)
     citation_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("citations.id"))
     explanation: Mapped[str] = mapped_column(Text)
+    # Curated neutral rewrites surfaced as the flag's recommendations. Dictionary flags are
+    # deterministic, so their rewrites are curated here rather than generated per run (ADR 0012).
+    recommended_alternatives: Mapped[list[str]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
     active: Mapped[bool] = mapped_column(server_default=text("true"))
     last_updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     source_proposal_id: Mapped[uuid.UUID | None] = mapped_column(
