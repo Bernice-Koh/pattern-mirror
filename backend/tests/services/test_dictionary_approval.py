@@ -79,6 +79,7 @@ def _seed_addition(
         lemma_key=lemma_key,
         proposed_category=category,
         explanation="Signals youth-coded culture, deterring older candidates.",
+        recommended_alternatives=["recent graduate", "early-career hire"],
     )
     db_session.add(addition)
     db_session.flush()
@@ -96,6 +97,7 @@ def test_approve_creates_live_cited_entry_with_audit_columns(db_session: Session
     assert entry.lemma_key == _LEMMA_KEY
     assert entry.category is BiasCategory.age
     assert entry.explanation == addition.explanation
+    assert entry.recommended_alternatives == addition.recommended_alternatives
     assert entry.active is True
     assert entry.citation_id == addition.proposal.citation_id
     assert entry.last_updated_by == actor.id

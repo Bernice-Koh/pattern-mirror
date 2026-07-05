@@ -23,7 +23,9 @@ _PROPOSER_SYSTEM = (
     "dictionary. Argue FOR inclusion: name the protected characteristic it skews toward "
     "(gender, age, race, nationality, religion, disability, or family status) and why it is "
     "biased across hiring contexts generally, not just here. Choose the single best-fitting "
-    "category. If you genuinely cannot justify a dictionary entry, decline "
+    "category. Also give 2-3 neutral alternative phrasings a manager could use instead — ones "
+    "that keep the legitimate job requirement while dropping the coded term (for an exclusionary "
+    "phrase, an inclusive rephrasing). If you genuinely cannot justify a dictionary entry, decline "
     "(supports_inclusion=false) rather than force a weak case."
 )
 
@@ -60,6 +62,10 @@ class ProposerResult(BaseModel):
     )
     category: BiasCategory = Field(
         description="The single protected characteristic the phrase skews toward."
+    )
+    recommended_alternatives: list[str] = Field(
+        default_factory=list,
+        description="2-3 neutral rewrites that keep the job requirement without the coded term.",
     )
     reasoning: str = Field(description="One or two sentences arguing for inclusion.")
 
