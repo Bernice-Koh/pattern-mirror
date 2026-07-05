@@ -35,7 +35,8 @@ export function patternStatement(pattern: WritingPattern): PatternStatement {
   const groups = Object.entries(pattern.group_counts).sort(
     ([, a], [, b]) => b - a,
   )
-  const [dominantKey, dominantCount] = groups[0]
+  // Gated patterns always carry group counts; fall back rather than throw if one ever arrives empty.
+  const [dominantKey, dominantCount] = groups[0] ?? ['', 0]
   const minority = groups[1]
   const total = pattern.supporting_count
 
