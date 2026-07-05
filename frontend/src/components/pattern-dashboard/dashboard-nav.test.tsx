@@ -37,6 +37,17 @@ describe('DashboardNav', () => {
     ).toBeInTheDocument()
   })
 
+  it('lists My documents above Your patterns', () => {
+    render(<DashboardNav active="documents" onSelect={vi.fn()} />)
+
+    const items = screen
+      .getAllByRole('button')
+      .map((button) => button.textContent)
+    expect(items.indexOf('My documents')).toBeLessThan(
+      items.indexOf('Your patterns'),
+    )
+  })
+
   it('reports the chosen view', () => {
     const onSelect = vi.fn()
     render(<DashboardNav active="documents" onSelect={onSelect} />)

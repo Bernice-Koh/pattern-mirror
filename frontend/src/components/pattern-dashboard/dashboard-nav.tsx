@@ -4,9 +4,10 @@ import { useAuth } from '@/lib/use-auth'
 
 export type DashboardView = 'patterns' | 'documents'
 
+// My documents leads — it's the manager's entry point and the dashboard's default view.
 const NAV_ITEMS: { view: DashboardView; label: string }[] = [
-  { view: 'patterns', label: 'Your patterns' },
   { view: 'documents', label: 'My documents' },
+  { view: 'patterns', label: 'Your patterns' },
 ]
 
 const ROLE_LABELS: Record<'manager' | 'hr', string> = {

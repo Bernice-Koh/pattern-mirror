@@ -33,13 +33,25 @@ export function Button({
   size,
   className,
   type = 'button',
+  children,
   ...props
 }: ButtonProps) {
+  // A filled (red) button's white label reads optically high against the saturated fill, so the
+  // label is nudged down a hair. Outlined/ghost buttons centre correctly and are left untouched.
+  const filled = variant === undefined || variant === 'primary'
   return (
     <button
       type={type}
       className={cn(button({ variant, size }), className)}
       {...props}
-    />
+    >
+      {filled ? (
+        <span className="inline-flex translate-y-px items-center gap-2">
+          {children}
+        </span>
+      ) : (
+        children
+      )}
+    </button>
   )
 }
