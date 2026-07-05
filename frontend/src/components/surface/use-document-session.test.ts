@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
 import {
   createDocument,
-  DocumentError,
   getDocument,
   submitDocument,
   updateDraft,
@@ -12,7 +11,6 @@ import {
 import { useDocumentSession } from './use-document-session'
 
 vi.mock('@/lib/documents-client', () => ({
-  DocumentError: class DocumentError extends Error {},
   createDocument: vi.fn(),
   getDocument: vi.fn(),
   updateDraft: vi.fn(),
@@ -50,7 +48,6 @@ function wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  localStorage.clear()
   createDocumentMock.mockResolvedValue(draft())
   updateDraftMock.mockResolvedValue(draft())
   submitDocumentMock.mockResolvedValue({ ...draft(), status: 'submitted' })
@@ -61,6 +58,16 @@ afterEach(() => {
 })
 
 describe('useDocumentSession', () => {
+  it('starts blank on direct navigation, loading no document', () => {
+    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
+
+    // No ?doc=: a fresh canvas — nothing is fetched and no draft is auto-resumed.
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.documentId).toBeNull()
+    expect(result.current.initialContent).toBe('')
+    expect(getDocumentMock).not.toHaveBeenCalled()
+  })
+
   it('creates the backing document on the first edit', async () => {
     const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
 
@@ -70,7 +77,6 @@ describe('useDocumentSession', () => {
     expect(createDocumentMock).toHaveBeenCalledExactlyOnceWith({
       doc_type: 'jd',
     })
-    expect(localStorage.getItem('pm:document:jd')).toBe('doc-1')
   })
 
   it('autosaves title and content after a pause, without running analysis', async () => {
@@ -140,44 +146,16 @@ describe('useDocumentSession', () => {
     expect(submitDocumentMock).not.toHaveBeenCalled()
   })
 
-  it('restores a remembered draft on load', async () => {
-    localStorage.setItem('pm:document:jd', 'doc-9')
-    getDocumentMock.mockResolvedValue(
-      draft({ id: 'doc-9', title: 'Restored role', content: 'restored text' }),
-    )
+  it('leaves the editor blank when an opened document fails to load', async () => {
+    getDocumentMock.mockRejectedValue(new Error('gone'))
 
-    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
-    expect(result.current.isLoading).toBe(true)
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(result.current.documentId).toBe('doc-9')
-    expect(result.current.title).toBe('Restored role')
-    expect(result.current.initialContent).toBe('restored text')
-    expect(createDocumentMock).not.toHaveBeenCalled()
-  })
-
-  it('forgets a remembered id that now points to a submitted document', async () => {
-    localStorage.setItem('pm:document:jd', 'doc-sub')
-    getDocumentMock.mockResolvedValue({
-      ...draft({ id: 'doc-sub' }),
-      status: 'submitted' as const,
+    const { result } = renderHook(() => useDocumentSession('jd', 'missing'), {
+      wrapper,
     })
-
-    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
 
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.documentId).toBeNull()
-    expect(localStorage.getItem('pm:document:jd')).toBeNull()
-  })
-
-  it('forgets a remembered draft that no longer exists', async () => {
-    localStorage.setItem('pm:document:jd', 'gone')
-    getDocumentMock.mockRejectedValue(new DocumentError(404))
-
-    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
-
-    await waitFor(() => expect(result.current.isLoading).toBe(false))
-    expect(localStorage.getItem('pm:document:jd')).toBeNull()
+    expect(result.current.initialContent).toBe('')
   })
 
   it('retries the backing document after a failed create', async () => {
@@ -192,18 +170,5 @@ describe('useDocumentSession', () => {
 
     act(() => result.current.setContent('second try'))
     await waitFor(() => expect(result.current.documentId).toBe('doc-2'))
-  })
-
-  it('starts fresh when localStorage is unavailable', () => {
-    const getItem = vi
-      .spyOn(Storage.prototype, 'getItem')
-      .mockImplementation(() => {
-        throw new Error('blocked')
-      })
-
-    const { result } = renderHook(() => useDocumentSession('jd'), { wrapper })
-    expect(result.current.isLoading).toBe(false)
-
-    getItem.mockRestore()
   })
 })
