@@ -98,6 +98,7 @@ def approve_addition(
         lemma_key=addition.lemma_key,
         citation_id=proposal.citation_id,
         explanation=addition.explanation,
+        recommended_alternatives=addition.recommended_alternatives,
         last_updated_by=actor_id,
         source_proposal_id=proposal.id,
     )

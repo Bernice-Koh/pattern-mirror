@@ -30,6 +30,7 @@ class DictionaryRule:
     category: BiasCategory
     citation_id: uuid.UUID
     explanation: str
+    recommended_alternatives: tuple[str, ...]
 
 
 def load_active_rules(session: Session, region_code: str) -> list[DictionaryRule]:
@@ -58,6 +59,7 @@ def load_active_rules(session: Session, region_code: str) -> list[DictionaryRule
             category=entry.category,
             citation_id=entry.citation_id,
             explanation=entry.explanation,
+            recommended_alternatives=tuple(entry.recommended_alternatives),
         )
         for entry in entries
     ]
@@ -139,6 +141,7 @@ def match_dictionary(text: str, rules: Sequence[DictionaryRule]) -> list[Candida
                     dictionary_entry_id=rule.id,
                     explanation=rule.explanation,
                     lemma_key=key,
+                    recommended_alternatives=rule.recommended_alternatives,
                 )
                 for rule in matched_rules
             )

@@ -39,3 +39,6 @@ class CandidateFlag:
     explanation: str | None = None
     lemma_key: str | None = None
     verdict: FlagVerdict | None = None
+    # Curated rewrites carried from a dictionary rule; empty for contextual flags (the
+    # Recommendations Agent attaches theirs later).
+    recommended_alternatives: tuple[str, ...] = ()

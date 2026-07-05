@@ -172,6 +172,7 @@ def review_candidate(
             lemma_key=candidate.lemma_key,
             proposed_category=verdict.proposed_category,
             explanation=proposer.result.reasoning,
+            recommended_alternatives=proposer.result.recommended_alternatives,
         )
         session.add(pending)
         session.flush()

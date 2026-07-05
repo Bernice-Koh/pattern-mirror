@@ -67,6 +67,9 @@ def test_persists_run_and_cited_flag_for_the_document(db_session: Session) -> No
     assert flag.sentence_fingerprint
     assert flag.raw_span == "digital native"
     assert flag.rationale["explanation"]
+    # The dictionary entry's curated rewrites surface as the flag's recommendations (#8 phase 1).
+    assert flag.recommendations is not None
+    assert flag.recommendations["alternatives"]
 
 
 def test_clean_document_persists_with_no_flags(db_session: Session) -> None:
