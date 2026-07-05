@@ -102,6 +102,12 @@ class Settings(BaseSettings):
     growth_recurrence_min_managers: int = 1
     growth_recurrence_min_documents: int = 2
 
+    # Root of the local-disk blob stand-in (#118). Resume/CV files are the only binary artefacts
+    # (design spec §5); dev writes them under this folder, production swaps in an Azure Blob store
+    # behind the same interface. Kept as a plain path string so the value maps straight to a
+    # filesystem root without model coupling.
+    blob_storage_path: str = "./deploy/blob-data"
+
 
 @lru_cache
 def get_settings() -> Settings:

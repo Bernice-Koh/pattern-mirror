@@ -5,7 +5,8 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { CitedFlag } from '@/lib/analyze-contract'
 import { analyzeDocument } from '@/lib/analyze-client'
-import { JdEditor, type JdEditorHandle } from './jd-editor'
+import { listFlags } from '@/lib/flags-client'
+import { SurfaceEditor, type SurfaceEditorHandle } from './surface-editor'
 import { useFlagStream } from './use-flag-stream'
 import { applyFlags } from './flag-decorations'
 
@@ -59,25 +60,39 @@ vi.mock('@tiptap/react', () => ({
     ),
 }))
 vi.mock('@tiptap/starter-kit', () => ({ default: {} }))
-vi.mock('@/components/jd-studio/flag-decorations', () => ({
+vi.mock('@/components/surface/flag-decorations', () => ({
   applyFlags: vi.fn(),
   FlagDecorations: {},
 }))
 vi.mock('@/lib/analyze-client', () => ({ analyzeDocument: vi.fn() }))
-vi.mock('@/components/jd-studio/use-flag-stream', () => ({
+vi.mock('@/lib/flags-client', () => ({ listFlags: vi.fn() }))
+vi.mock('@/components/surface/use-flag-stream', () => ({
   useFlagStream: vi.fn(),
 }))
 
 function wrapper({ children }: { children: ReactNode }) {
-  const client = new QueryClient()
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>
 }
 
-describe('JdEditor', () => {
+/** A reopened document seeds its panel from stored flags, then the live layers take over on the
+ *  first edit or re-check. The mocked editor can't emit an edit, so re-check is how these tests
+ *  hand the surface to the live layers (its contextual flags are the mocked `useFlagStream`). */
+async function activateLive() {
+  fireEvent.click(screen.getByRole('button', { name: 'Re-check' }))
+  // Let the disabled hydration query settle so its resolution never lands outside act().
+  await waitFor(() => expect(listFlags).toHaveBeenCalled())
+}
+
+describe('SurfaceEditor', () => {
   beforeEach(() => {
     insertContentAt.mockClear()
     run.mockClear()
     vi.mocked(applyFlags).mockClear()
+    vi.mocked(analyzeDocument).mockReset()
+    vi.mocked(listFlags).mockReset().mockResolvedValue([])
     vi.mocked(useFlagStream).mockReturnValue({
       contextualFlags: [FLAG],
       recheck: vi.fn(),
@@ -86,8 +101,8 @@ describe('JdEditor', () => {
   })
 
   it('applyRecommendation replaces the flagged span with the chosen phrasing', () => {
-    const ref = createRef<JdEditorHandle>()
-    render(<JdEditor ref={ref} documentId={null} initialContent="" />, {
+    const ref = createRef<SurfaceEditorHandle>()
+    render(<SurfaceEditor ref={ref} documentId={null} initialContent="" />, {
       wrapper,
     })
 
@@ -100,8 +115,8 @@ describe('JdEditor', () => {
   })
 
   it('applyRecommendation is a no-op when the span no longer matches', () => {
-    const ref = createRef<JdEditorHandle>()
-    render(<JdEditor ref={ref} documentId={null} initialContent="" />, {
+    const ref = createRef<SurfaceEditorHandle>()
+    render(<SurfaceEditor ref={ref} documentId={null} initialContent="" />, {
       wrapper,
     })
 
@@ -112,16 +127,66 @@ describe('JdEditor', () => {
     expect(insertContentAt).not.toHaveBeenCalled()
   })
 
-  it('reveals the recommendation popover when a flagged span is hovered', () => {
+  it('re-hydrates stored flags on open without running the live layers', async () => {
+    vi.mocked(listFlags).mockResolvedValue([FLAG])
+    const onFlagsChange = vi.fn()
+    // Read-only stands in for a reopened submitted document: no editing, so no live run at all.
+    render(
+      <SurfaceEditor
+        documentId="doc-1"
+        editable={false}
+        initialContent="saved text"
+        onFlagsChange={onFlagsChange}
+      />,
+      { wrapper },
+    )
+
+    await waitFor(() => expect(onFlagsChange).toHaveBeenCalledWith([FLAG]))
+    expect(listFlags).toHaveBeenCalledWith('doc-1')
+    expect(analyzeDocument).not.toHaveBeenCalled()
+  })
+
+  it('does not run Layer 1 on open before the manager edits', async () => {
+    render(<SurfaceEditor documentId="doc-1" initialContent="biased text" />, {
+      wrapper,
+    })
+
+    await waitFor(() => expect(listFlags).toHaveBeenCalledWith('doc-1'))
+    expect(analyzeDocument).not.toHaveBeenCalled()
+  })
+
+  it('runs Layer 1 analysis once the surface goes live', async () => {
+    vi.mocked(analyzeDocument).mockResolvedValue({
+      document_id: 'doc-1',
+      analysis_run_id: 'run-1',
+      content_hash: 'hash',
+      flags: [],
+    })
+    render(<SurfaceEditor documentId="doc-1" initialContent="biased text" />, {
+      wrapper,
+    })
+
+    await activateLive()
+
+    await waitFor(() =>
+      expect(analyzeDocument).toHaveBeenCalledWith(
+        { document_id: 'doc-1', content: 'biased text' },
+        expect.anything(),
+      ),
+    )
+  })
+
+  it('reveals the recommendation popover when a flagged span is hovered', async () => {
     const onApplyRecommendation = vi.fn()
     render(
-      <JdEditor
-        documentId={null}
+      <SurfaceEditor
+        documentId="doc-1"
         initialContent=""
         onApplyRecommendation={onApplyRecommendation}
       />,
       { wrapper },
     )
+    await activateLive()
 
     fireEvent.mouseOver(screen.getByText('young rockstar'))
 
@@ -134,16 +199,17 @@ describe('JdEditor', () => {
     )
   })
 
-  it('dismisses the flag from the popover', () => {
+  it('dismisses the flag from the popover', async () => {
     const onDismissFlag = vi.fn()
     render(
-      <JdEditor
-        documentId={null}
+      <SurfaceEditor
+        documentId="doc-1"
         initialContent=""
         onDismissFlag={onDismissFlag}
       />,
       { wrapper },
     )
+    await activateLive()
 
     fireEvent.mouseOver(screen.getByText('young rockstar'))
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss flag' }))
@@ -151,58 +217,41 @@ describe('JdEditor', () => {
     expect(onDismissFlag).toHaveBeenCalledWith(FLAG)
   })
 
-  it('clears a dismissed flag from the inline decorations', () => {
+  it('clears a dismissed flag from the inline decorations', async () => {
     render(
-      <JdEditor
-        documentId={null}
+      <SurfaceEditor
+        documentId="doc-1"
         initialContent=""
         resolvedFlagIds={new Set(['f1'])}
       />,
       { wrapper },
     )
+    await activateLive()
 
     // FLAG is the only flag and is dismissed, so the editor decorates nothing.
     const lastCall = vi.mocked(applyFlags).mock.calls.at(-1)?.[1] as CitedFlag[]
     expect(lastCall).toEqual([])
   })
 
-  it('does not open a popover for a dismissed flag on hover', () => {
+  it('does not open a popover for a dismissed flag on hover', async () => {
     render(
-      <JdEditor
-        documentId={null}
+      <SurfaceEditor
+        documentId="doc-1"
         initialContent=""
         resolvedFlagIds={new Set(['f1'])}
       />,
       { wrapper },
     )
+    await activateLive()
 
     fireEvent.mouseOver(screen.getByText('young rockstar'))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('runs Layer 1 analysis once a document and text are present', async () => {
-    vi.mocked(analyzeDocument).mockResolvedValue({
-      document_id: 'doc-1',
-      analysis_run_id: 'run-1',
-      content_hash: 'hash',
-      flags: [],
-    })
-    render(<JdEditor documentId="doc-1" initialContent="biased text" />, {
-      wrapper,
-    })
-
-    await waitFor(() =>
-      expect(analyzeDocument).toHaveBeenCalledWith(
-        { document_id: 'doc-1', content: 'biased text' },
-        expect.anything(),
-      ),
-    )
-  })
-
   it('hides the Re-check control when opened read-only', () => {
     render(
-      <JdEditor
+      <SurfaceEditor
         documentId="doc-1"
         editable={false}
         initialContent="saved text"
@@ -214,7 +263,7 @@ describe('JdEditor', () => {
   })
 
   it('disables the Re-check button until a document exists', () => {
-    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
+    render(<SurfaceEditor documentId={null} initialContent="" />, { wrapper })
 
     expect(screen.getByRole('button', { name: /re-check/i })).toBeDisabled()
   })
@@ -225,13 +274,14 @@ describe('JdEditor', () => {
       recheck: vi.fn(),
       isRechecking: true,
     })
-    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
+    render(<SurfaceEditor documentId={null} initialContent="" />, { wrapper })
 
     expect(screen.getByRole('button', { name: /re-checking/i })).toBeDisabled()
   })
 
-  it('schedules a close when the pointer leaves the flag, and reopens on re-hover', () => {
-    render(<JdEditor documentId={null} initialContent="" />, { wrapper })
+  it('schedules a close when the pointer leaves the flag, and reopens on re-hover', async () => {
+    render(<SurfaceEditor documentId="doc-1" initialContent="" />, { wrapper })
+    await activateLive()
     const span = screen.getByText('young rockstar')
 
     fireEvent.mouseOver(span)

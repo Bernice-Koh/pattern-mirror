@@ -17,8 +17,10 @@ from pattern_mirror.api.deps import get_current_user
 from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
 from pattern_mirror.models.documents import Document
-from pattern_mirror.models.enums import AnalysisRunStatus, DocType
-from pattern_mirror.models.identity import User
+from pattern_mirror.models.enums import AnalysisRunStatus, DocType, SubjectType
+from pattern_mirror.models.identity import Subject, User
+from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.promotion_rubric import PromotionRubricCriterion
 from pattern_mirror.services.streaming_analysis import RunCompleted, StageCompleted
 
 pytestmark = pytest.mark.db
@@ -70,6 +72,100 @@ def test_stream_emits_sse_frames_and_a_terminal_done(
     assert "event: stage" in response.text
     assert "event: done" in response.text
     assert str(run_id) in response.text
+
+
+def _capture_stream(captured: dict[str, object]) -> object:
+    """A stand-in stream that records the kwargs it was called with, then closes cleanly."""
+
+    def fake_stream(*args: object, **kwargs: object) -> Iterator[object]:
+        captured.update(kwargs)
+        yield RunCompleted(
+            analysis_run_id=uuid.uuid4(), status=AnalysisRunStatus.complete, flag_count=0
+        )
+
+    return fake_stream
+
+
+def test_feedback_run_attaches_the_drift_check(
+    stream_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    jd = Document(owner_id=owner.id, doc_type=DocType.jd, role_title="Analyst", content="jd")
+    db_session.add(jd)
+    db_session.flush()
+    db_session.add(JdCriterion(jd_document_id=jd.id, text="Python proficiency", position=0))
+    feedback = Document(
+        owner_id=owner.id, doc_type=DocType.feedback, reference_jd_id=jd.id, content="fb"
+    )
+    db_session.add(feedback)
+    db_session.flush()
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(streaming, "stream_analysis_events", _capture_stream(captured))
+
+    response = stream_client.post(
+        "/analyze/stream", json={"document_id": str(feedback.id), "content": "fb"}
+    )
+
+    assert response.status_code == 200
+    reference = captured["drift_reference"]
+    assert reference is not None
+    assert reference.reference_text == "Python proficiency"
+    # A drift run reuses the bias stages' client, so it is set whenever a reference resolves.
+    assert captured["drift_client"] is captured["contextual_client"]
+
+
+def test_promotion_run_attaches_the_drift_check(
+    stream_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    level = "Director — Delivery Engineering"
+    db_session.add(
+        PromotionRubricCriterion(level_label=level, text="Owns technical delivery", position=0)
+    )
+    employee = Subject(subject_type=SubjectType.employee, legal_name="Promo Employee")
+    db_session.add(employee)
+    db_session.flush()
+    promotion = Document(
+        owner_id=owner.id,
+        doc_type=DocType.promotion,
+        subject_id=employee.id,
+        role_title=level,
+        content="wu",
+    )
+    db_session.add(promotion)
+    db_session.flush()
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(streaming, "stream_analysis_events", _capture_stream(captured))
+
+    response = stream_client.post(
+        "/analyze/stream", json={"document_id": str(promotion.id), "content": "wu"}
+    )
+
+    assert response.status_code == 200
+    reference = captured["drift_reference"]
+    assert reference is not None
+    # A promotion now drifts against its rubric, not peer feedback (§8).
+    assert "Owns technical delivery" in reference.reference_text
+    assert captured["drift_client"] is captured["contextual_client"]
+
+
+def test_jd_run_does_not_attach_the_drift_check(
+    stream_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    jd = Document(owner_id=owner.id, doc_type=DocType.jd, content="jd")
+    db_session.add(jd)
+    db_session.flush()
+
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(streaming, "stream_analysis_events", _capture_stream(captured))
+
+    response = stream_client.post(
+        "/analyze/stream", json={"document_id": str(jd.id), "content": "jd"}
+    )
+
+    assert response.status_code == 200
+    assert captured["drift_reference"] is None
+    assert captured["drift_client"] is None
 
 
 def test_unknown_document_is_rejected(stream_client: TestClient) -> None:

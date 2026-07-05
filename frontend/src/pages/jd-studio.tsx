@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { useSearch } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import {
   CATEGORY_LABELS,
   formatCitation,
@@ -10,13 +10,13 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { CategorySummary } from '@/components/ui/category-summary'
-import { Editor } from '@/components/ui/editor'
 import { FlagCard } from '@/components/ui/flag-card'
+import { JdCriteriaConfirm } from '@/components/ui/jd-criteria-confirm'
 import { Legend } from '@/components/ui/legend'
-import { AutosaveStatus } from '@/components/jd-studio/autosave-status'
-import { JdEditor, type JdEditorHandle } from '@/components/jd-studio/jd-editor'
-import { useDocumentSession } from '@/components/jd-studio/use-document-session'
-import { useFlagInteractions } from '@/components/jd-studio/use-flag-interactions'
+import { SurfaceEditorPane } from '@/components/surface/surface-editor-pane'
+import type { SurfaceEditorHandle } from '@/components/surface/surface-editor'
+import { useDocumentSession } from '@/components/surface/use-document-session'
+import { useFlagInteractions } from '@/components/surface/use-flag-interactions'
 
 const SUBMIT_LABELS = {
   idle: 'Publish JD',
@@ -28,9 +28,13 @@ const SUBMIT_LABELS = {
 export function JdStudio() {
   // A document opened from My Documents (#69) arrives as ?doc=<id>; absent for a fresh draft.
   const { doc } = useSearch({ strict: false })
+  const navigate = useNavigate()
   const session = useDocumentSession('jd', doc)
   const [flags, setFlags] = useState<CitedFlag[]>([])
-  const editorRef = useRef<JdEditorHandle>(null)
+  // Publishing a JD confirms its drift criteria first (#122); the modal drafts them, the manager
+  // edits, and confirming persists the set and then submits the document.
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const editorRef = useRef<SurfaceEditorHandle>(null)
   const { resolutions, accept, dismiss, undo } = useFlagInteractions()
 
   // Apply writes the chosen phrasing into the document and logs the acceptance; marking the
@@ -76,34 +80,19 @@ export function JdStudio() {
   return (
     <main className="flex h-[calc(100vh-7rem)] flex-col bg-surface">
       <div className="grid min-h-0 flex-1 grid-cols-[58%_42%]">
-        <div className="overflow-auto border-r border-border">
-          <Editor
-            title={session.title}
-            onTitleChange={session.setTitle}
-            titlePlaceholder="Untitled job description"
-            meta={
-              <span className="inline-flex items-center gap-1.5">
-                <span>
-                  Job description · {submitted ? 'submitted' : 'draft'}
-                </span>
-                {session.saveState !== 'idle' && <span aria-hidden>·</span>}
-                <AutosaveStatus state={session.saveState} />
-              </span>
-            }
-          >
-            <JdEditor
-              ref={editorRef}
-              documentId={session.documentId}
-              editable={!readOnly}
-              initialContent={session.initialContent}
-              onTextChange={session.setContent}
-              onFlagsChange={setFlags}
-              onApplyRecommendation={applyRecommendation}
-              onDismissFlag={(flag) => dismiss(flag.id)}
-              resolvedFlagIds={resolvedFlagIds}
-            />
-          </Editor>
-        </div>
+        <SurfaceEditorPane
+          session={session}
+          editorRef={editorRef}
+          documentKindLabel="Job description"
+          titlePlaceholder="Untitled job description"
+          readOnly={readOnly}
+          submitted={submitted}
+          onFlagsChange={setFlags}
+          onApplyRecommendation={applyRecommendation}
+          onDismissFlag={(flag) => dismiss(flag.id)}
+          resolvedFlagIds={resolvedFlagIds}
+          onClose={() => navigate({ to: '/pattern-dashboard' })}
+        />
 
         <aside className="overflow-auto bg-surface-alt p-5">
           <CategorySummary items={categoryItems} />
@@ -143,7 +132,7 @@ export function JdStudio() {
           <Button
             variant="primary"
             size="md"
-            onClick={session.submit}
+            onClick={() => setConfirmOpen(true)}
             disabled={
               !session.documentId ||
               session.submitState === 'submitting' ||
@@ -154,6 +143,19 @@ export function JdStudio() {
           </Button>
         </div>
       </footer>
+
+      {session.documentId && (
+        <JdCriteriaConfirm
+          open={confirmOpen}
+          documentId={session.documentId}
+          content={session.content}
+          onClose={() => setConfirmOpen(false)}
+          onConfirmed={() => {
+            setConfirmOpen(false)
+            session.submit()
+          }}
+        />
+      )}
     </main>
   )
 }

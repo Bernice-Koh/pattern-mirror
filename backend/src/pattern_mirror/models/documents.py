@@ -29,8 +29,10 @@ from pattern_mirror.models.enums import (
 from pattern_mirror.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
+    from pattern_mirror.models.drift import DriftFinding, DriftFindingDismissal
     from pattern_mirror.models.engine import Flag, FlagDismissal
     from pattern_mirror.models.identity import Subject, User
+    from pattern_mirror.models.jd_criteria import JdCriterion
 
 
 class Document(TimestampMixin, Base):
@@ -62,9 +64,16 @@ class Document(TimestampMixin, Base):
         remote_side=lambda: [Document.id], back_populates="dependent_feedback"
     )
     dependent_feedback: Mapped[list["Document"]] = relationship(back_populates="reference_jd")
+    jd_criteria: Mapped[list["JdCriterion"]] = relationship(
+        back_populates="jd_document", order_by="JdCriterion.position"
+    )
     analysis_runs: Mapped[list["AnalysisRun"]] = relationship(back_populates="document")
     flags: Mapped[list["Flag"]] = relationship(back_populates="document")
     dismissals: Mapped[list["FlagDismissal"]] = relationship(back_populates="document")
+    drift_findings: Mapped[list["DriftFinding"]] = relationship(back_populates="document")
+    drift_finding_dismissals: Mapped[list["DriftFindingDismissal"]] = relationship(
+        back_populates="document"
+    )
 
 
 class AnalysisRun(Base):
@@ -86,3 +95,4 @@ class AnalysisRun(Base):
 
     document: Mapped["Document"] = relationship(back_populates="analysis_runs")
     flags: Mapped[list["Flag"]] = relationship(back_populates="analysis_run")
+    drift_findings: Mapped[list["DriftFinding"]] = relationship(back_populates="analysis_run")

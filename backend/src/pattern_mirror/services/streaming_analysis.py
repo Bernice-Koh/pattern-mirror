@@ -27,6 +27,7 @@ from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.llm_agent import StructuredCompletionClient
 from pattern_mirror.engine.orchestrator import build_default_graph
 from pattern_mirror.engine.state import (
+    DriftReference,
     FlagRecommendation,
     JudgeScore,
     SuppressedFlag,
@@ -36,6 +37,7 @@ from pattern_mirror.models.documents import AnalysisRun
 from pattern_mirror.models.engine import Flag
 from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
 from pattern_mirror.services.analysis import build_flag
+from pattern_mirror.services.drift_findings import persist_drift_findings, reference_kind_for
 from pattern_mirror.services.run_registry import RunRegistry
 
 _REGION_CODE = "SG"
@@ -195,6 +197,8 @@ def stream_analysis_events(
     contextual_client: StructuredCompletionClient | None = None,
     judge_client: StructuredCompletionClient | None = None,
     recommendations_client: StructuredCompletionClient | None = None,
+    drift_client: StructuredCompletionClient | None = None,
+    drift_reference: DriftReference | None = None,
     trigger: AnalysisTrigger = AnalysisTrigger.typing_pause,
     region_code: str = _REGION_CODE,
 ) -> Iterator[StreamEvent]:
@@ -222,6 +226,9 @@ def stream_analysis_events(
         judge_client: The Judge client; ``None`` passes every flag through ungated.
         recommendations_client: The Recommendations client; ``None`` surfaces flags with no
             rewrites.
+        drift_client: The drift-check client; ``None`` skips the drift stage. Supplied with a
+            ``drift_reference`` by the Feedback Checkpoint / Promotion Writeup surfaces.
+        drift_reference: The reference corpus to drift-check against; ``None`` runs no drift stage.
         trigger: What started this run; ``recheck`` for a manual clean pass, otherwise the
             default typing pause.
         region_code: The lexicon region; SG for the MVP.
@@ -250,6 +257,7 @@ def stream_analysis_events(
             contextual_client=contextual_client,
             judge_client=judge_client,
             recommendations_client=recommendations_client,
+            drift_client=drift_client,
         )
         state = initial_state(
             analysis_run_id=run.id,
@@ -257,6 +265,7 @@ def stream_analysis_events(
             document_text=content,
             doc_type=doc_type,
             region_code=region_code,
+            drift_reference=drift_reference,
         )
         pending_surface: list[Flag] = []
         flag_by_candidate: dict[CandidateFlag, Flag] = {}
@@ -292,6 +301,16 @@ def stream_analysis_events(
                     )
                 if stage_name == "recommendations":
                     _attach_recommendations(flag_by_candidate, data.get("recommendations", []))
+                if "drift_findings" in data:
+                    # Drift is its own stage after the bias pipeline; persisted like a suppressed
+                    # flag (log everything), read back by the surfaces rather than streamed here.
+                    persist_drift_findings(
+                        session,
+                        run=run,
+                        document_id=document_id,
+                        reference_kind=reference_kind_for(doc_type),
+                        findings=data["drift_findings"],
+                    )
                 session.commit()
 
                 # Supersede gates surfacing, not persistence: a newer run stops this one's

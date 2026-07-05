@@ -8,6 +8,7 @@ Re-running only inserts what is missing — users by ``external_user_id``, subje
 ``external_ref``, documents by ``(owner_id, title)`` — so it is safe to run repeatedly.
 """
 
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -15,10 +16,16 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.db.session import get_sessionmaker
-from pattern_mirror.jobs.demo_dataset import DemoDataset, load_demo_dataset
+from pattern_mirror.jobs.demo_dataset import DemoDataset, DocumentSeed, load_demo_dataset
+from pattern_mirror.jobs.resume_fixtures import render_resume_pdf, resume_ref
 from pattern_mirror.models.documents import Document
-from pattern_mirror.models.enums import DocumentStatus, UserRole
+from pattern_mirror.models.enums import DocType, DocumentStatus, UserRole
 from pattern_mirror.models.identity import Subject, User, UserRoleAssignment
+from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.peer_corroboration import PeerCorroboration
+from pattern_mirror.models.peer_feedback import PeerFeedback
+from pattern_mirror.models.promotion_rubric import PromotionRubricCriterion
+from pattern_mirror.services.blob_storage import BlobStore, get_blob_store
 
 
 @dataclass(frozen=True)
@@ -86,14 +93,28 @@ def _demo_manager(session: Session) -> User:
     return manager
 
 
-def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> None:
+def _jd_id_by_role(session: Session, owner_id: uuid.UUID) -> dict[str, uuid.UUID]:
+    """Map each role title to its JD document id, so feedback links to the JD for its role."""
+    jds = session.scalars(
+        select(Document).where(Document.owner_id == owner_id, Document.doc_type == DocType.jd)
+    ).all()
+    return {jd.role_title: jd.id for jd in jds if jd.role_title is not None}
+
+
+def seed_demo_content(
+    session: Session,
+    dataset: DemoDataset | None = None,
+    store: BlobStore | None = None,
+) -> None:
     """Insert any demo subject and document not already present, owned by the demo manager.
 
     Subjects are matched by ``external_ref`` and documents by ``(owner_id, title)``, so a
     re-run is a no-op. Feedback documents are linked to their subject and seeded as submitted,
-    representing the finished writing history the Pattern Dashboard mines.
+    representing the finished writing history the Pattern Dashboard mines. Each new subject also
+    gets a synthetic resume written to the blob store, so the download link (#118) resolves.
     """
     dataset = dataset or load_demo_dataset()
+    store = store or get_blob_store()
     manager = _demo_manager(session)
 
     refs = [subject.external_ref for subject in dataset.subjects]
@@ -102,7 +123,8 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
         for subject in session.scalars(select(Subject).where(Subject.external_ref.in_(refs))).all()
     }
     for subject_seed in dataset.subjects:
-        if subject_seed.external_ref not in subjects_by_ref:
+        subject = subjects_by_ref.get(subject_seed.external_ref)
+        if subject is None:
             subject = Subject(
                 subject_type=subject_seed.subject_type,
                 legal_name=subject_seed.legal_name,
@@ -113,6 +135,16 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
             session.add(subject)
             session.flush()
             subjects_by_ref[subject_seed.external_ref] = subject
+        # Backfill the resume for any subject missing one, not only ones created just now, so a
+        # database seeded before resumes existed gets them on the next run (still idempotent once
+        # the ref is set).
+        if subject.resume_blob_ref is None:
+            ref = resume_ref(subject.id)
+            store.write(
+                ref,
+                render_resume_pdf(name=subject.legal_name, subject_type=subject.subject_type.value),
+            )
+            subject.resume_blob_ref = ref
 
     titles = [document.title for document in dataset.documents]
     existing_titles = set(
@@ -123,6 +155,7 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
         ).all()
     )
     now = datetime.now(UTC)
+    created: list[tuple[DocumentSeed, Document]] = []
     for document_seed in dataset.documents:
         if document_seed.title in existing_titles:
             continue
@@ -131,17 +164,108 @@ def seed_demo_content(session: Session, dataset: DemoDataset | None = None) -> N
             if document_seed.subject_ref is not None
             else None
         )
+        is_submitted = document_seed.status is DocumentStatus.submitted
+        document = Document(
+            owner_id=manager.id,
+            doc_type=document_seed.doc_type,
+            title=document_seed.title,
+            role_title=document_seed.role_title,
+            subject_id=subject_id,
+            content=document_seed.content,
+            submitted_content=document_seed.content if is_submitted else None,
+            submitted_at=now if is_submitted else None,
+            status=document_seed.status,
+        )
+        session.add(document)
+        created.append((document_seed, document))
+    session.flush()
+
+    # Link each new feedback note to the JD for its role and seed each new JD's criteria, so the
+    # feedback drift check resolves a reference (#116). Only newly-created docs are touched, so a
+    # re-run stays a no-op.
+    jd_id_by_role = _jd_id_by_role(session, manager.id)
+    for document_seed, document in created:
+        if document.doc_type is DocType.feedback and document.role_title is not None:
+            document.reference_jd_id = jd_id_by_role.get(document.role_title)
+        for position, criterion in enumerate(document_seed.criteria):
+            session.add(JdCriterion(jd_document_id=document.id, text=criterion, position=position))
+
+    _seed_peer_feedback(session, dataset, subjects_by_ref)
+    _seed_promotion_rubrics(session, dataset)
+    _seed_peer_corroboration(session, dataset, subjects_by_ref)
+
+
+def _seed_promotion_rubrics(session: Session, dataset: DemoDataset) -> None:
+    """Insert each target level's rubric criteria, the reference a promotion writeup drifts against.
+
+    Keyed by ``level_label``; a level that already has any criteria is skipped whole, so a re-run is
+    a no-op. Position follows dataset order.
+    """
+    already_seeded = set(
+        session.scalars(select(PromotionRubricCriterion.level_label).distinct()).all()
+    )
+    for rubric in dataset.promotion_rubrics:
+        if rubric.level_label in already_seeded:
+            continue
+        for position, criterion in enumerate(rubric.criteria):
+            session.add(
+                PromotionRubricCriterion(
+                    level_label=rubric.level_label, text=criterion, position=position
+                )
+            )
+
+
+def _seed_peer_corroboration(
+    session: Session, dataset: DemoDataset, subjects_by_ref: dict[str | None, Subject]
+) -> None:
+    """Insert each employee's peer corroboration, the "what peers say" evidence against the rubric.
+
+    Keyed by ``subject_id``; an employee that already has any corroboration is skipped whole, so a
+    re-run is a no-op. Position follows dataset order.
+    """
+    already_seeded = set(session.scalars(select(PeerCorroboration.subject_id).distinct()).all())
+    position_by_subject: dict[uuid.UUID, int] = {}
+    for entry in dataset.peer_corroboration:
+        subject = subjects_by_ref[entry.subject_ref]
+        if subject.id in already_seeded:
+            continue
+        position = position_by_subject.get(subject.id, 0)
+        position_by_subject[subject.id] = position + 1
         session.add(
-            Document(
-                owner_id=manager.id,
-                doc_type=document_seed.doc_type,
-                title=document_seed.title,
-                role_title=document_seed.role_title,
-                subject_id=subject_id,
-                content=document_seed.content,
-                submitted_content=document_seed.content,
-                submitted_at=now,
-                status=DocumentStatus.submitted,
+            PeerCorroboration(
+                subject_id=subject.id,
+                criterion=entry.criterion,
+                corroborated=entry.corroborated,
+                evidence=entry.evidence,
+                position=position,
+            )
+        )
+
+
+def _seed_peer_feedback(
+    session: Session, dataset: DemoDataset, subjects_by_ref: dict[str | None, Subject]
+) -> None:
+    """Insert each employee's peer feedback, the reference a promotion writeup drifts against.
+
+    Peer feedback rows carry no natural key, so a subject that already has any is skipped whole
+    rather than deduplicated row by row — keeping a re-run a no-op. Position follows dataset order.
+    """
+    already_seeded = set(session.scalars(select(PeerFeedback.subject_id).distinct()).all())
+    position_by_subject: dict[uuid.UUID, int] = {}
+    for peer_seed in dataset.peer_feedback:
+        subject = subjects_by_ref[peer_seed.subject_ref]
+        if subject.id in already_seeded:
+            continue
+        position = position_by_subject.get(subject.id, 0)
+        position_by_subject[subject.id] = position + 1
+        session.add(
+            PeerFeedback(
+                subject_id=subject.id,
+                author_label=peer_seed.author_label,
+                strengths=peer_seed.strengths,
+                development=peer_seed.development,
+                overall=peer_seed.overall,
+                position=position,
             )
         )
 

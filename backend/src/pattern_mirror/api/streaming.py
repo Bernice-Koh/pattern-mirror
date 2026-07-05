@@ -27,6 +27,7 @@ from pattern_mirror.db.session import get_session
 from pattern_mirror.engine.llm_agent import build_instructor_client
 from pattern_mirror.models.documents import Document
 from pattern_mirror.models.identity import User
+from pattern_mirror.services.drift_reference import resolve_drift_reference
 from pattern_mirror.services.run_registry import get_run_registry
 from pattern_mirror.services.streaming_analysis import stream_analysis_events
 
@@ -62,8 +63,11 @@ async def analyze_stream(
     registry = get_run_registry()
     # Built here (network-free) and injected, so the engine layer stays free of settings;
     # None when no key is configured, which runs the dictionary-only path. One client drives
-    # both Agent stages — the model is chosen per call.
+    # every Agent stage — the model is chosen per call.
     client = build_instructor_client(get_settings())
+    # Feedback drifts against its JD's criteria, promotion against its employee's peer feedback;
+    # a JD or an unlinked document resolves to None and runs bias-only.
+    drift_reference = resolve_drift_reference(session, document)
 
     def event_source() -> Iterator[bytes]:
         for event in stream_analysis_events(
@@ -75,6 +79,8 @@ async def analyze_stream(
             contextual_client=client,
             judge_client=client,
             recommendations_client=client,
+            drift_client=client if drift_reference is not None else None,
+            drift_reference=drift_reference,
         ):
             yield format_sse(event)
 

@@ -51,6 +51,8 @@ JD Studio uses a **two-layer latency model**:
 
 The two layers feel like one experience to the manager — they see flags appear, some instantly, some a few seconds later, all dismissible with the same gesture.
 
+On **Publish JD**, an extraction agent drafts the role's assessment criteria from the JD text; the manager reviews and edits them in a confirm step, and only the confirmed set is stored as the reference the Feedback Checkpoint drift check is measured against. The criteria are AI-drafted, manager-*confirmed* — the confirm gate keeps unverified model output out of the drift reference (#122).
+
 #### View 2 — Feedback Checkpoint
 
 The manager's writing surface for interview feedback. Before submitting feedback through UBS systems, the manager pastes their draft into Checkpoint. Two checks run in parallel:
@@ -90,9 +92,9 @@ This layer stays inside Mirror-not-Judge: it is the manager's own behavioural da
 
 The manager's writing surface for promotion justifications. Triggered when the manager initiates "Evaluate for Promotion" against an employee. They enter their justification and supporting reasoning, and the tool runs two parallel checks:
 
-Bias in the language used (same engine as JD Studio and Feedback Checkpoint). Drift — whether the writeup's framing of the employee is consistent with historical peer feedback for that employee.
+Bias in the language used (same engine as JD Studio and Feedback Checkpoint). Drift — whether the writeup evidences the promotion rubric for the target level. Alongside the rubric coverage, the surface shows what the employee's historical peer feedback says for each criterion, as corroborating evidence: peers often supply the evidence a writeup omits.
 
-Same non-blocking model as Feedback Checkpoint. The manager sees the analysis before deciding whether to submit. See Section 4 for architectural detail on the promotion workflow, including how historical peer feedback is mocked in MVP.
+Same non-blocking model as Feedback Checkpoint. The manager sees the analysis before deciding whether to submit. See Section 4 for architectural detail on the promotion workflow, including how the rubric and historical peer feedback are mocked in MVP.
 
 The employee's resume / CV is available within the writeup view as a download link, for reference while drafting. See Section 5 for where resume files are stored.
 
@@ -119,9 +121,9 @@ The engine is a bounded, named-step flow. Each stage is logged, each transition 
 For Feedback Checkpoint and Promotion Workflow, a sixth concern runs alongside the five-stage bias pipeline: a **drift check** that compares the current writing against a reference document.
 
 - **Feedback Checkpoint** drift check: interview feedback vs. the original JD criteria.
-- **Promotion Workflow** drift check: promotion writeup vs. historical peer feedback for that employee.
+- **Promotion Workflow** drift check: promotion writeup vs. the promotion rubric for the target level.
 
-Architecturally the same agent, swapped reference corpus. This is significant — promotion analysis does not require a new engine, just a different reference document into the existing drift stage.
+Architecturally the same agent, swapped reference corpus. This is significant — promotion analysis does not require a new engine, just a different reference document into the existing drift stage. The employee's historical peer feedback is not a second drift corpus; it is surfaced as corroborating evidence against the same rubric (mocked in MVP), not run through the engine.
 
 #### Why the structure matters
 
@@ -245,11 +247,11 @@ The current pipeline detects bias but does not propose alternatives. A dedicated
 **Two analytical passes:**
 
 1. The existing five-stage engine against the **general bias dictionary** — gender-coded, racial-coded, age-coded language, all SEA-scoped categories already in MVP scope.
-2. A **drift / consistency check** against historical peer feedback for that employee.
+2. A **drift / coverage check** against the **promotion rubric** for the target level — which rubric criteria the writeup evidences.
 
-**Architecturally this is not a new agent.** It is the existing drift-check stage (already used in Feedback Checkpoint to compare interview feedback against JD criteria) with a swapped reference document — peer feedback instead of JD. Same pattern, different reference corpus.
+**Architecturally this is not a new agent.** It is the existing drift-check stage (already used in Feedback Checkpoint to compare interview feedback against JD criteria) with a swapped reference document — the promotion rubric instead of the JD. Same pattern, different reference corpus. The rubric is the promotion analogue of a role's JD criteria: seeded now for the rubric, while JD criteria are AI-drafted with a manager-confirm gate (JD Studio, #122).
 
-**Historical peer feedback.** UBS has an existing feedback system where employees can request feedback from anyone working with them — colleagues, managers, etc. — collected as three free-text fields stored in a relational database. For MVP, this data is **mocked as synthetic data** rather than integrated. Integration with the actual UBS feedback system is post-MVP.
+**Historical peer feedback (corroborating evidence).** UBS has an existing feedback system where employees can request feedback from anyone working with them — colleagues, managers, etc. — collected as three free-text fields stored in a relational database. The Promotion Writeup surfaces this alongside the rubric coverage as *corroborating evidence*: for each rubric criterion, whether peers evidence it — so a manager sees when peers already supply the evidence a writeup omits. This is not a second engine pass; the peer corroboration is **mocked as synthetic data** in MVP (a fact about the employee, not the writeup). Integration with the actual UBS feedback system, and inferring corroboration live, are post-MVP.
 
 The Recommendations Agent runs on promotion-workflow flags the same way it does for JDs and feedback — same threshold, same principles.
 

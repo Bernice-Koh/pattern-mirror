@@ -36,6 +36,22 @@ class NotAuthorizedError(PatternMirrorError):
         super().__init__("Not authorized.")
 
 
+class BlobNotFoundError(PatternMirrorError):
+    """No blob is stored under the given reference."""
+
+    def __init__(self, ref: object) -> None:
+        super().__init__(f"Blob not found: {ref}")
+        self.ref = ref
+
+
+class ResumeNotFoundError(PatternMirrorError):
+    """The subject has no stored resume, or the caller may not read it."""
+
+    def __init__(self, subject_id: object) -> None:
+        super().__init__(f"Resume not found: {subject_id}")
+        self.subject_id = subject_id
+
+
 class DocumentNotFoundError(PatternMirrorError):
     """A requested document does not exist or is not owned by the current user."""
 
@@ -44,12 +60,37 @@ class DocumentNotFoundError(PatternMirrorError):
         self.document_id = document_id
 
 
+class DocumentTypeMismatchError(PatternMirrorError):
+    """An operation ran against a document of the wrong type (e.g. JD criteria on feedback)."""
+
+    def __init__(self, document_id: object, expected: object, actual: object) -> None:
+        super().__init__(f"Document {document_id} is {actual}, expected {expected}")
+        self.document_id = document_id
+        self.expected = expected
+        self.actual = actual
+
+
+class LlmClientUnavailableError(PatternMirrorError):
+    """An LLM-backed action was requested but no Anthropic client is configured."""
+
+    def __init__(self) -> None:
+        super().__init__("LLM client is not configured.")
+
+
 class FlagNotFoundError(PatternMirrorError):
     """A requested flag does not exist or belongs to another user's document."""
 
     def __init__(self, flag_id: object) -> None:
         super().__init__(f"Flag not found: {flag_id}")
         self.flag_id = flag_id
+
+
+class DriftFindingNotFoundError(PatternMirrorError):
+    """A requested drift finding does not exist or belongs to another user's document."""
+
+    def __init__(self, finding_id: object) -> None:
+        super().__init__(f"Drift finding not found: {finding_id}")
+        self.finding_id = finding_id
 
 
 class PendingAdditionNotFoundError(PatternMirrorError):

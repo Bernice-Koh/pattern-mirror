@@ -28,6 +28,8 @@ from pattern_mirror.models.mixins import TimestampMixin
 
 if TYPE_CHECKING:
     from pattern_mirror.models.documents import Document
+    from pattern_mirror.models.peer_corroboration import PeerCorroboration
+    from pattern_mirror.models.peer_feedback import PeerFeedback
 
 
 class User(TimestampMixin, Base):
@@ -76,3 +78,9 @@ class Subject(TimestampMixin, Base):
     resume_blob_ref: Mapped[str | None] = mapped_column(String)
 
     documents: Mapped[list["Document"]] = relationship(back_populates="subject")
+    peer_feedback: Mapped[list["PeerFeedback"]] = relationship(
+        back_populates="subject", order_by="PeerFeedback.position"
+    )
+    peer_corroboration: Mapped[list["PeerCorroboration"]] = relationship(
+        back_populates="subject", order_by="PeerCorroboration.position"
+    )

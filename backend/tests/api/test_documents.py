@@ -23,8 +23,11 @@ from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import FlagDismissal
-from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType
-from pattern_mirror.models.identity import User
+from pattern_mirror.models.enums import AnalysisRunStatus, AnalysisTrigger, DocType, SubjectType
+from pattern_mirror.models.identity import Subject, User
+from pattern_mirror.models.jd_criteria import JdCriterion
+from pattern_mirror.models.peer_corroboration import PeerCorroboration
+from pattern_mirror.models.promotion_rubric import PromotionRubricCriterion
 from pattern_mirror.services.streaming_analysis import RunCompleted, StageCompleted
 
 pytestmark = pytest.mark.db
@@ -182,6 +185,171 @@ def _dismissal_on(db_session: Session, document: Document) -> FlagDismissal:
     return dismissal
 
 
+def test_feedback_context_returns_criteria_subject_and_role(
+    documents_client: TestClient, db_session: Session, owner: User
+) -> None:
+    jd = Document(owner_id=owner.id, doc_type=DocType.jd, role_title="Analyst", content="jd")
+    db_session.add(jd)
+    db_session.flush()
+    db_session.add_all(
+        [
+            JdCriterion(jd_document_id=jd.id, text="Python proficiency", position=0),
+            JdCriterion(jd_document_id=jd.id, text="Strong SQL", position=1),
+        ]
+    )
+    subject = Subject(subject_type=SubjectType.candidate, legal_name="Jordan Blake")
+    db_session.add(subject)
+    db_session.flush()
+    feedback = Document(
+        owner_id=owner.id,
+        doc_type=DocType.feedback,
+        role_title="Analyst",
+        reference_jd_id=jd.id,
+        subject_id=subject.id,
+        content="fb",
+    )
+    db_session.add(feedback)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{feedback.id}/feedback-context")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["role_title"] == "Analyst"
+    assert body["subject_id"] == str(subject.id)
+    assert body["subject_name"] == "Jordan Blake"
+    assert body["criteria"] == ["Python proficiency", "Strong SQL"]
+
+
+def test_feedback_context_without_a_reference_returns_no_criteria(
+    documents_client: TestClient, db_session: Session, owner: User
+) -> None:
+    feedback = Document(owner_id=owner.id, doc_type=DocType.feedback, content="fb")
+    db_session.add(feedback)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{feedback.id}/feedback-context")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["criteria"] == []
+    assert body["subject_id"] is None
+    assert body["subject_name"] is None
+
+
+def test_feedback_context_of_another_users_document_is_rejected(
+    documents_client: TestClient, db_session: Session
+) -> None:
+    other = User(
+        external_user_id="feedback-context-other",
+        legal_name="Feedback Context Other",
+        email="feedback.context.other@example.com",
+    )
+    db_session.add(other)
+    db_session.flush()
+    foreign = Document(owner_id=other.id, doc_type=DocType.feedback, content="fb")
+    db_session.add(foreign)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{foreign.id}/feedback-context")
+
+    assert response.status_code == 404
+
+
+def test_promotion_context_returns_rubric_subject_level_and_corroboration(
+    documents_client: TestClient, db_session: Session, owner: User
+) -> None:
+    level = "Director — Delivery Engineering"
+    db_session.add_all(
+        [
+            PromotionRubricCriterion(level_label=level, text="Owns delivery", position=0),
+            PromotionRubricCriterion(level_label=level, text="Cross-team impact", position=1),
+        ]
+    )
+    subject = Subject(subject_type=SubjectType.employee, legal_name="Nadia Farouk")
+    db_session.add(subject)
+    db_session.flush()
+    db_session.add_all(
+        [
+            PeerCorroboration(
+                subject_id=subject.id,
+                criterion="Owns delivery",
+                corroborated=True,
+                evidence="owns the pipeline end to end",
+                position=0,
+            ),
+            PeerCorroboration(
+                subject_id=subject.id,
+                criterion="Cross-team impact",
+                corroborated=False,
+                evidence=None,
+                position=1,
+            ),
+        ]
+    )
+    promotion = Document(
+        owner_id=owner.id,
+        doc_type=DocType.promotion,
+        role_title=level,
+        subject_id=subject.id,
+        content="wu",
+    )
+    db_session.add(promotion)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{promotion.id}/promotion-context")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["role_title"] == level
+    assert body["subject_id"] == str(subject.id)
+    assert body["subject_name"] == "Nadia Farouk"
+    assert body["criteria"] == ["Owns delivery", "Cross-team impact"]
+    assert body["corroboration"] == [
+        {
+            "criterion": "Owns delivery",
+            "corroborated": True,
+            "evidence": "owns the pipeline end to end",
+        },
+        {"criterion": "Cross-team impact", "corroborated": False, "evidence": None},
+    ]
+
+
+def test_promotion_context_without_a_rubric_returns_no_criteria(
+    documents_client: TestClient, db_session: Session, owner: User
+) -> None:
+    promotion = Document(owner_id=owner.id, doc_type=DocType.promotion, content="wu")
+    db_session.add(promotion)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{promotion.id}/promotion-context")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["criteria"] == []
+    assert body["corroboration"] == []
+    assert body["subject_id"] is None
+
+
+def test_promotion_context_of_another_users_document_is_rejected(
+    documents_client: TestClient, db_session: Session
+) -> None:
+    other = User(
+        external_user_id="promotion-context-other",
+        legal_name="Promotion Context Other",
+        email="promotion.context.other@example.com",
+    )
+    db_session.add(other)
+    db_session.flush()
+    foreign = Document(owner_id=other.id, doc_type=DocType.promotion, content="wu")
+    db_session.add(foreign)
+    db_session.flush()
+
+    response = documents_client.get(f"/documents/{foreign.id}/promotion-context")
+
+    assert response.status_code == 404
+
+
 def test_recheck_clears_dismissals_and_streams_a_terminal_done(
     documents_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -211,6 +379,38 @@ def test_recheck_clears_dismissals_and_streams_a_terminal_done(
 
     db_session.refresh(dismissal)
     assert dismissal.active is False
+
+
+def test_recheck_of_feedback_attaches_the_drift_check(
+    documents_client: TestClient, db_session: Session, owner: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    jd = Document(owner_id=owner.id, doc_type=DocType.jd, role_title="Analyst", content="jd")
+    db_session.add(jd)
+    db_session.flush()
+    db_session.add(JdCriterion(jd_document_id=jd.id, text="Python proficiency", position=0))
+    feedback = Document(
+        owner_id=owner.id, doc_type=DocType.feedback, reference_jd_id=jd.id, content="fb"
+    )
+    db_session.add(feedback)
+    db_session.flush()
+
+    captured: dict[str, Any] = {}
+
+    def fake_stream(*args: object, **kwargs: object) -> Iterator[object]:
+        captured.update(kwargs)
+        yield RunCompleted(
+            analysis_run_id=uuid.uuid4(), status=AnalysisRunStatus.complete, flag_count=0
+        )
+
+    monkeypatch.setattr(documents, "stream_analysis_events", fake_stream)
+
+    response = documents_client.post(f"/documents/{feedback.id}/recheck", json={"content": "fb"})
+
+    assert response.status_code == 200
+    reference = captured["drift_reference"]
+    assert reference is not None
+    assert reference.reference_text == "Python proficiency"
+    assert captured["drift_client"] is captured["contextual_client"]
 
 
 def test_recheck_of_an_unknown_document_is_rejected(documents_client: TestClient) -> None:
