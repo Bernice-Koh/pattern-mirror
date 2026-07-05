@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query'
 import type { WritingPattern } from '@/lib/patterns-contract'
 import { getPatterns } from '@/lib/patterns-client'
 import { PatternCard } from '@/components/pattern-dashboard/pattern-card'
-import { PatternOverviewStub } from '@/components/pattern-dashboard/pattern-overview-stub'
 import { WritingVolumeTrends } from '@/components/pattern-dashboard/writing-volume-trends'
 import { BehaviouralReflection } from '@/components/pattern-dashboard/behavioural-reflection'
 
@@ -95,8 +94,6 @@ export function YourPatterns() {
         How your writing and decisions have changed over time. Only patterns
         unlikely to be a coincidence appear here.
       </p>
-
-      <PatternOverviewStub />
 
       {!isLoading && (
         <WritingVolumeTrends
