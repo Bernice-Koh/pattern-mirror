@@ -73,6 +73,16 @@ def build_flag(
         An unpersisted ``Flag`` carrying the candidate's span, provenance, and fingerprint.
     """
     assert candidate.start_offset is not None and candidate.end_offset is not None
+    # Dictionary flags carry their curated rewrites straight to the flag; contextual flags leave
+    # recommendations null here and gain them from the Recommendations Agent above threshold.
+    recommendations = (
+        {
+            "rationale": "Neutral phrasings aligned to TAFEP fair-employment guidance.",
+            "alternatives": list(candidate.recommended_alternatives),
+        }
+        if candidate.recommended_alternatives
+        else None
+    )
     return Flag(
         document_id=document_id,
         analysis_run_id=analysis_run_id,
@@ -90,6 +100,7 @@ def build_flag(
         start_offset=candidate.start_offset,
         end_offset=candidate.end_offset,
         rationale={"explanation": candidate.explanation},
+        recommendations=recommendations,
         judge_confidence=Decimal(str(judge_confidence)) if judge_confidence is not None else None,
         suppressed=suppressed,
         suppressed_by_dismissal_id=suppressed_by_dismissal_id,

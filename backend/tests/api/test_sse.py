@@ -59,8 +59,9 @@ def test_format_sse_renders_a_flag_frame_from_a_persisted_flag(db_session: Sessi
     assert frame.startswith("event: flag\ndata: ")
     assert '"raw_span":"digital native"' in frame
     assert '"citation":' in frame
-    # A dictionary flag the Recommendations Agent never runs on serialises with a null field.
-    assert '"recommendations":null' in frame
+    # A dictionary flag now carries its curated rewrites (#8 phase 1), so recommendations serialise.
+    assert '"recommendations":{' in frame
+    assert '"digitally fluent"' in frame
 
 
 @pytest.mark.db

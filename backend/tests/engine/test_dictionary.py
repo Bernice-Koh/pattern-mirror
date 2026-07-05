@@ -32,6 +32,7 @@ def _rule(term: str, *, category: BiasCategory = BiasCategory.gender) -> Diction
         category=category,
         citation_id=uuid.uuid4(),
         explanation=f"Synthetic rule for {term!r}.",
+        recommended_alternatives=(),
     )
 
 
