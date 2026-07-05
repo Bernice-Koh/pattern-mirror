@@ -104,6 +104,11 @@ export function JdStudio() {
             <Badge tone="red">{visibleFlags.length}</Badge>
           </div>
           <div className="flex flex-col gap-3">
+            {visibleFlags.length === 0 && (
+              <p className="font-sans text-body-sm text-ink-muted">
+                Nothing flagged.
+              </p>
+            )}
             {visibleFlags.map((flag) => (
               <FlagCard
                 key={flag.id}
