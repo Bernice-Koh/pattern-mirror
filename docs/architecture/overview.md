@@ -124,7 +124,8 @@ or an aborted stream — the flag log is product data, not a byproduct.
 **Longitudinal — when a manager opens the Pattern Dashboard.** No LLM anywhere: the
 Pattern Aggregator (`services/pattern_aggregator.py`) reads the persisted flag history,
 builds a contingency table per candidate pattern, and surfaces only those passing
-Fisher's exact test below the configured threshold (`services/significance.py`). A
+Fisher's exact test below the configured threshold (`services/significance.py`; the
+gating in detail: [pattern-significance.md](pattern-significance.md)). A
 manager is never told "you have a pattern" on anecdote — a claim like *"coded terms
 cluster in your JDs for senior roles"* surfaces only when the numbers rule out
 coincidence. The dashboard also reflects the manager's own decisions back: each flag's
