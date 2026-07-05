@@ -23,7 +23,7 @@ from pattern_mirror.engine.contextual_pass import (
 )
 from pattern_mirror.engine.drift import DriftCriterionFinding, DriftResult
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
-from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
+from pattern_mirror.engine.judge import JudgeRubric, JudgeSample
 from pattern_mirror.engine.lemmatiser import lemma_key
 from pattern_mirror.engine.recommendations import Recommendation, RecommendationsResult
 from pattern_mirror.engine.state import DriftReference, FlagRecommendation
@@ -86,14 +86,30 @@ class _FakeContextualClient:
 
 
 class _FakeJudgeClient:
-    """Deterministic stand-in for the Judge client: fixed verdicts, recorded usage."""
+    """Deterministic stand-in for the Judge client: the same rubric sample every call."""
 
-    def __init__(self, result: JudgeResult) -> None:
-        self._result = result
+    def __init__(self, sample: JudgeSample) -> None:
+        self._sample = sample
         self._completion = SimpleNamespace(usage=SimpleNamespace(input_tokens=70, output_tokens=15))
 
     def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
-        return self._result, self._completion
+        return self._sample, self._completion
+
+
+def _judge_sample(*, biased: bool) -> JudgeSample:
+    """A single-flag rubric sample whose derived verdict is ``biased`` (flag_id 1)."""
+    return JudgeSample(
+        rubrics=[
+            JudgeRubric(
+                flag_id=1,
+                references_characteristic=biased,
+                reference_style="coded" if biased else "none",
+                gdor_plausible=False,
+                stated_objectively=False,
+                reasoning="r",
+            )
+        ]
+    )
 
 
 class _FakeRecommendationsClient:
@@ -259,7 +275,7 @@ def test_recheck_still_respects_the_judge_gate(db_session: Session) -> None:
     # Clearing dismissals re-surfaces dismissed flags, but the Judge's confidence gate still
     # applies: a below-threshold contextual flag stays suppressed through a re-check.
     document = _document(db_session, content=_MIXED_TEXT)
-    judge = _FakeJudgeClient(JudgeResult(verdicts=[JudgeVerdict(confidence=0.4, reasoning="weak")]))
+    judge = _FakeJudgeClient(_judge_sample(biased=False))
 
     events = list(
         stream_analysis_events(
@@ -566,7 +582,7 @@ def test_below_threshold_contextual_flag_is_persisted_suppressed_not_surfaced(
     db_session: Session,
 ) -> None:
     document = _document(db_session, content=_MIXED_TEXT)
-    judge = _FakeJudgeClient(JudgeResult(verdicts=[JudgeVerdict(confidence=0.4, reasoning="weak")]))
+    judge = _FakeJudgeClient(_judge_sample(biased=False))
 
     events = list(
         stream_analysis_events(
@@ -593,16 +609,15 @@ def test_below_threshold_contextual_flag_is_persisted_suppressed_not_surfaced(
     assert persisted["digital native"].suppressed is False
     assert persisted["digital native"].judge_confidence is None
     assert persisted["culture fit"].suppressed is True
-    assert persisted["culture fit"].judge_confidence == Decimal("0.4")
+    # No sample judged it biased: unanimous 0/N agreement, below the 0.7 gate.
+    assert persisted["culture fit"].judge_confidence == Decimal("0.000")
 
 
 def test_above_threshold_contextual_flag_surfaces_with_its_confidence(
     db_session: Session,
 ) -> None:
     document = _document(db_session, content=_MIXED_TEXT)
-    judge = _FakeJudgeClient(
-        JudgeResult(verdicts=[JudgeVerdict(confidence=0.9, reasoning="clear")])
-    )
+    judge = _FakeJudgeClient(_judge_sample(biased=True))
 
     events = list(
         stream_analysis_events(
@@ -623,7 +638,8 @@ def test_above_threshold_contextual_flag_surfaces_with_its_confidence(
         select(Flag).where(Flag.document_id == document.id, Flag.raw_span == "culture fit")
     ).one()
     assert kept.suppressed is False
-    assert kept.judge_confidence == Decimal("0.9")
+    # Every sample judged it biased: unanimous agreement clears the gate.
+    assert kept.judge_confidence == Decimal("1.000")
 
     judge_run = db_session.scalars(
         select(AgentRun).where(
@@ -635,9 +651,7 @@ def test_above_threshold_contextual_flag_surfaces_with_its_confidence(
 
 def test_recommendations_attach_to_a_surfaced_contextual_flag(db_session: Session) -> None:
     document = _document(db_session, content="We value a strong culture fit.")
-    judge = _FakeJudgeClient(
-        JudgeResult(verdicts=[JudgeVerdict(confidence=0.9, reasoning="clear")])
-    )
+    judge = _FakeJudgeClient(_judge_sample(biased=True))
     recommendations = _FakeRecommendationsClient(
         RecommendationsResult(
             recommendations=[

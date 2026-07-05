@@ -127,15 +127,6 @@ class DictionaryEntryExistsError(PatternMirrorError):
         self.category = category
 
 
-class JudgeVerdictCountError(PatternMirrorError):
-    """The Judge returned a different number of verdicts than the flags it was asked to score."""
-
-    def __init__(self, expected: int, received: int) -> None:
-        super().__init__(f"Judge returned {received} verdicts for {expected} flags")
-        self.expected = expected
-        self.received = received
-
-
 class RecommendationCountError(PatternMirrorError):
     """The Recommendations Agent returned a different number of sets than the flags given."""
 

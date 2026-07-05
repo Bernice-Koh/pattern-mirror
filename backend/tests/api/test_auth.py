@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from pattern_mirror.api.auth import _initials
-from pattern_mirror.core.errors import JudgeVerdictCountError
+from pattern_mirror.core.errors import RecommendationCountError
 from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
 from pattern_mirror.models.enums import UserRole
@@ -149,10 +149,10 @@ def test_unexpected_domain_error_maps_to_500() -> None:
 
     @app.get("/_raise_domain")
     def _raise() -> None:
-        raise JudgeVerdictCountError(expected=1, received=2)
+        raise RecommendationCountError(expected=1, received=2)
 
     with TestClient(app, raise_server_exceptions=False) as test_client:
         response = test_client.get("/_raise_domain")
 
     assert response.status_code == 500
-    assert response.json()["error"] == "JudgeVerdictCountError"
+    assert response.json()["error"] == "RecommendationCountError"

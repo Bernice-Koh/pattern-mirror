@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
-from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
+from pattern_mirror.engine.judge import JudgeRubric, JudgeSample
 from pattern_mirror.jobs.calibrate import _gold_labels, report_fields, run_calibration
 from pattern_mirror.jobs.gold_set import GoldDocument, GoldSet
 from pattern_mirror.models.enums import (
@@ -123,7 +123,20 @@ def test_run_calibration_scores_the_engine_and_leaves_no_scratch_rows(db_session
             ]
         )
     )
-    judge = _FakeClient(JudgeResult(verdicts=[JudgeVerdict(confidence=0.9, reasoning="clear")]))
+    judge = _FakeClient(
+        JudgeSample(
+            rubrics=[
+                JudgeRubric(
+                    flag_id=1,
+                    references_characteristic=True,
+                    reference_style="coded",
+                    gdor_plausible=False,
+                    stated_objectively=False,
+                    reasoning="clear",
+                )
+            ]
+        )
+    )
 
     report = run_calibration(db_session, gold, contextual_client=contextual, judge_client=judge)
 

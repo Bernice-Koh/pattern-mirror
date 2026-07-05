@@ -31,7 +31,7 @@ from pattern_mirror.engine.dictionary import (
     match_dictionary,
 )
 from pattern_mirror.engine.drift import run_drift, to_drift_findings
-from pattern_mirror.engine.judge import run_judge, to_judge_scores
+from pattern_mirror.engine.judge import aggregation_fields, run_judge, to_judge_scores
 from pattern_mirror.engine.llm_agent import StructuredCompletionClient, estimate_cost_usd
 from pattern_mirror.engine.recommendations import (
     run_recommendations,
@@ -219,7 +219,14 @@ def _build_judge_node(
         contextual = [f for f in verified if f.source_stage is FlagSourceStage.contextual]
 
         if client is not None and contextual:
-            run = run_judge(client, flags=contextual, doc_type=state["doc_type"], model=model)
+            run = run_judge(
+                client,
+                flags=contextual,
+                document_text=state["document_text"],
+                doc_type=state["doc_type"],
+                model=model,
+                samples=settings.judge_samples,
+            )
             record_agent_run(
                 session,
                 agent_name=AgentName.judge,
@@ -230,7 +237,7 @@ def _build_judge_node(
                         {"category": f.category.value, "raw_span": f.raw_span} for f in contextual
                     ],
                 },
-                output=run.result.model_dump(mode="json"),
+                output=aggregation_fields(contextual, run.samples),
                 document_id=state["document_id"],
                 analysis_run_id=state["analysis_run_id"],
                 prompt_tokens=run.prompt_tokens,
@@ -238,7 +245,7 @@ def _build_judge_node(
                 cost_usd=estimate_cost_usd(model, run.prompt_tokens, run.completion_tokens),
                 latency_ms=run.latency_ms,
             )
-            contextual_scores = to_judge_scores(contextual, run.result, settings)
+            contextual_scores = to_judge_scores(contextual, run.samples, settings)
         else:
             contextual_scores = [_ungated_judge_score(f) for f in contextual]
 

@@ -8,6 +8,7 @@ field, rather than failing deep inside a later request.
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from pattern_mirror.models.enums import BiasCategory
@@ -78,6 +79,11 @@ class Settings(BaseSettings):
     # Per-category threshold overrides (ADR-0008): category -> threshold. Categories absent
     # here fall back to ``judge_confidence_threshold``.
     judge_confidence_threshold_overrides: dict[BiasCategory, float] = {}
+
+    # Self-consistency sample count for the Judge (ADR-0013): the stage runs N times per
+    # document and confidence is the fraction of samples deriving bias. Bounded 1..5 — beyond 5
+    # the cost outweighs the marginal agreement signal; N=1 disables self-consistency.
+    judge_samples: int = Field(default=3, ge=1, le=5)
 
     # The Pattern Aggregator's significance gate (#66): a pattern surfaces only if its Fisher's
     # exact p-value is strictly below this. In config so the bar is tunable without a code change.

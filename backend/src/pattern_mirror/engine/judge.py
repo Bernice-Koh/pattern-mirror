@@ -1,21 +1,27 @@
 """Stage 4 of the engine: the LLM Judge, an Agent (Claude Haiku 4.5).
 
-One schema-enforced Anthropic call (via Instructor) that scores each verified contextual flag
-on confidence only. The Adjudicator already guarantees the span exists verbatim, so there is
-no hallucination check (ADR-0007). The score is an uncalibrated verbalized confidence in
-[0, 1] (ADR-0008); gating against the threshold runs on the calibrated score in
-``to_judge_scores``. Below-threshold flags are marked suppressed and terminate here.
+N schema-enforced Anthropic calls (via Instructor), each answering a GDOR rubric for every
+verified contextual flag (ADR-0013). The Judge sees each flag's span with its surrounding
+document context; the Contextual Pass's explanation is withheld so the verdict is independent
+evidence. The model emits no confidence number: each sample's bias verdict is derived from its
+rubric answers, and a flag's confidence is the fraction of samples deriving bias
+(self-consistency). Gating against the threshold runs on the calibrated score in
+``to_judge_scores``; below-threshold flags are marked suppressed and terminate here.
 """
 
+import hashlib
 import time
 from dataclasses import dataclass
+from typing import Any, Literal
 
+import structlog
 from pydantic import BaseModel, Field
 
 from pattern_mirror.core.config import Settings
-from pattern_mirror.core.errors import JudgeVerdictCountError
 from pattern_mirror.engine.calibration import (
+    agreement_fraction,
     calibrate_confidence,
+    derive_bias_verdict,
     passes_threshold,
     threshold_for,
 )
@@ -24,7 +30,11 @@ from pattern_mirror.engine.llm_agent import StructuredCompletionClient
 from pattern_mirror.engine.state import JudgeScore
 from pattern_mirror.models.enums import DocType
 
+_log = structlog.get_logger("pattern_mirror.engine.judge")
+
 _MAX_TOKENS = 4096
+_CONFIDENCE_DECIMALS = 3  # matches the flags.judge_confidence column, Numeric(4, 3)
+_SENTENCE_BREAKS = ".!?\n"
 
 _DOC_TYPE_LABELS: dict[DocType, str] = {
     DocType.jd: "job description",
@@ -33,115 +43,269 @@ _DOC_TYPE_LABELS: dict[DocType, str] = {
 }
 
 _SYSTEM_PROMPT = (
-    "You are a calibration reviewer for hiring and promotion bias flags. Each flag is a phrase "
-    "already confirmed to appear verbatim in the document; your only job is to judge how "
-    "strongly it reflects bias toward the stated protected characteristic, in context.\n\n"
-    "Return a confidence in [0, 1] for each flag, in the order given: 1 means the phrasing is "
-    "unambiguously biased, 0 means it is benign or genuinely job-relevant. Be calibrated, not "
-    "generous — a borderline or context-dependent case belongs near the middle, not near 1. "
-    "Judge only the bias claim; never question whether the phrase exists."
+    "You are an independent reviewer of hiring and promotion bias flags under Singapore's "
+    "TAFEP fair-employment rules. Each flag is a phrase already confirmed to appear verbatim "
+    "in the document; you are given the phrase and its surrounding context, and you answer a "
+    "fixed rubric per flag. You never emit a score. Judge from the context alone, and never "
+    "question whether the phrase exists.\n\n"
+    "The rubric per flag:\n"
+    "- references_characteristic: does the phrase, in context, reference a protected "
+    "characteristic (gender, age, race, nationality, religion, disability, family status)?\n"
+    "- reference_style: 'explicit' if the characteristic is named outright, 'coded' if it is "
+    "implied through proxy language, 'none' if no characteristic is referenced.\n"
+    "- gdor_plausible: could the reference be a Genuine and Determining Occupational "
+    "Requirement, meaning the job cannot function without it?\n"
+    "- stated_objectively: is it stated as a measurable capability or outcome "
+    '("must lift 15 kg"), rather than as an identity trait?\n\n'
+    "Answer each question on its own merits rather than working back from an overall "
+    "impression. Return one rubric per flag, matched by flag_id."
 )
 
 
-class JudgeVerdict(BaseModel):
-    """The Judge's confidence that one flagged phrase reflects the claimed bias."""
+class JudgeRubric(BaseModel):
+    """One sample's rubric answers for one flag, matched back to it by ``flag_id``."""
 
-    confidence: float = Field(
-        ge=0,
-        le=1,
-        description="0 = benign/job-relevant, 1 = unambiguous bias, for THIS flag.",
+    flag_id: int = Field(description="The id of the flag being judged, from the list given.")
+    references_characteristic: bool = Field(
+        description="Whether the phrase references a protected characteristic in context."
     )
-    reasoning: str = Field(description="One sentence: why this confidence.")
+    reference_style: Literal["explicit", "coded", "none"] = Field(
+        description="How the characteristic is referenced; 'none' if it is not."
+    )
+    gdor_plausible: bool = Field(
+        description="Whether a genuine and determining occupational requirement is plausible."
+    )
+    stated_objectively: bool = Field(
+        description="Whether it is stated as a measurable capability or outcome."
+    )
+    reasoning: str = Field(description="One sentence: the deciding observation.")
 
 
-class JudgeResult(BaseModel):
-    """The schema the model must fill: one verdict per flag, in the order the flags were given."""
+class JudgeSample(BaseModel):
+    """The schema one Judge call must fill: one rubric per flag given, in any order."""
 
-    verdicts: list[JudgeVerdict] = Field(default_factory=list)
+    rubrics: list[JudgeRubric] = Field(default_factory=list)
 
 
 @dataclass(frozen=True)
 class JudgeRun:
-    """A completed Judge call: its parsed result plus what the audit log needs."""
+    """A completed Judge stage: its N samples plus the audit figures, summed across samples."""
 
-    result: JudgeResult
+    samples: list[JudgeSample]
     prompt_tokens: int | None
     completion_tokens: int | None
     latency_ms: int
 
 
-def _user_prompt(flags: list[CandidateFlag], doc_type: DocType) -> str:
+def context_window(text: str, start: int, end: int) -> str:
+    """The sentence containing ``[start, end)``, bounded by sentence punctuation or a newline."""
+    left = start
+    while left > 0 and text[left - 1] not in _SENTENCE_BREAKS:
+        left -= 1
+    right = end
+    while right < len(text) and text[right] not in _SENTENCE_BREAKS:
+        right += 1
+    if right < len(text) and text[right] != "\n":
+        right += 1  # keep the closing punctuation, drop a trailing newline
+    return text[left:right].strip()
+
+
+def _flag_context(document_text: str, flag: CandidateFlag) -> str:
+    start, end = flag.start_offset, flag.end_offset
+    if start is None or end is None:
+        found = document_text.find(flag.raw_span)
+        if found < 0:
+            return flag.raw_span
+        start, end = found, found + len(flag.raw_span)
+    return context_window(document_text, start, end)
+
+
+def _sample_order(flag_count: int, seed: int) -> list[int]:
+    """A per-sample flag order: 1-based ids sorted by a hash of (seed, id).
+
+    Deterministic and reproducible, and distinct across seeds, so it averages out prompt
+    position bias without a PRNG — the ordering carries no security or randomness requirement.
+    """
+
+    def key(flag_id: int) -> str:
+        return hashlib.sha256(f"{seed}:{flag_id}".encode()).hexdigest()
+
+    return sorted(range(1, flag_count + 1), key=key)
+
+
+def _user_prompt(
+    flags: list[CandidateFlag], document_text: str, doc_type: DocType, seed: int
+) -> str:
+    # Flag order varies per sample to neutralise position bias; flag_id keys each rubric back
+    # regardless of order. The Contextual Pass's explanation is omitted so the Judge's evidence
+    # is the document, not the generator (ADR-0013).
+    by_id = dict(enumerate(flags, start=1))
+    numbered = [(flag_id, by_id[flag_id]) for flag_id in _sample_order(len(flags), seed)]
     label = _DOC_TYPE_LABELS[doc_type]
     listing = "\n".join(
-        f"{index}. category={flag.category.value} | span={flag.raw_span!r} | "
-        f"why={flag.explanation or ''}"
-        for index, flag in enumerate(flags, start=1)
+        f'[flag_id {flag_id}] "{flag.raw_span}" (claimed category: {flag.category.value})\n'
+        f'  context: "{_flag_context(document_text, flag)}"'
+        for flag_id, flag in numbered
     )
     return (
-        f"Score each flagged phrase from this {label}. Return one verdict per flag, in order.\n\n"
-        f"{listing}"
+        f"Judge each flagged phrase from this {label}. "
+        f"Return one rubric per flag, matched by flag_id.\n\n{listing}"
     )
+
+
+def _accumulate_usage(totals: tuple[int, int] | None, usage: Any) -> tuple[int, int] | None:
+    prompt = getattr(usage, "input_tokens", None)
+    completion = getattr(usage, "output_tokens", None)
+    if prompt is None or completion is None:
+        return totals
+    running_prompt, running_completion = totals or (0, 0)
+    return running_prompt + prompt, running_completion + completion
 
 
 def run_judge(
     client: StructuredCompletionClient,
     *,
     flags: list[CandidateFlag],
+    document_text: str,
     doc_type: DocType,
     model: str,
+    samples: int,
 ) -> JudgeRun:
-    """Score the given flags on confidence and return the validated verdicts + usage.
+    """Judge the given flags over N self-consistency samples and return them with summed usage.
 
     Args:
         client: An Instructor-wrapped Anthropic client (or a test fake).
-        flags: The verified flags to score, in the order verdicts must come back.
+        flags: The verified contextual flags to judge; their 1-based position is the flag_id.
+        document_text: The source document, from which each flag's context window is cut.
         doc_type: The document's type, which sets the role context in the prompt.
         model: The Anthropic model id (from config).
+        samples: How many samples to draw, each with an independently shuffled flag order.
 
     Returns:
-        The parsed result and the token/latency figures the audit log records.
-
-    Raises:
-        JudgeVerdictCountError: if the model returns a different number of verdicts than flags.
+        The parsed samples and the summed token/latency figures the audit log records.
     """
     started = time.monotonic()
-    parsed, completion = client.create_with_completion(
-        model=model,
-        max_tokens=_MAX_TOKENS,
-        system=_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": _user_prompt(flags, doc_type)}],
-        response_model=JudgeResult,
-    )
+    collected: list[JudgeSample] = []
+    totals: tuple[int, int] | None = None
+    for seed in range(samples):
+        parsed, completion = client.create_with_completion(
+            model=model,
+            max_tokens=_MAX_TOKENS,
+            system=_SYSTEM_PROMPT,
+            messages=[
+                {"role": "user", "content": _user_prompt(flags, document_text, doc_type, seed)}
+            ],
+            response_model=JudgeSample,
+        )
+        collected.append(parsed)
+        totals = _accumulate_usage(totals, getattr(completion, "usage", None))
     latency_ms = int((time.monotonic() - started) * 1000)
-    result: JudgeResult = parsed
-    if len(result.verdicts) != len(flags):
-        raise JudgeVerdictCountError(len(flags), len(result.verdicts))
-    usage = getattr(completion, "usage", None)
+    prompt_tokens, completion_tokens = totals if totals is not None else (None, None)
     return JudgeRun(
-        result=result,
-        prompt_tokens=getattr(usage, "input_tokens", None),
-        completion_tokens=getattr(usage, "output_tokens", None),
+        samples=collected,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
         latency_ms=latency_ms,
     )
 
 
+def _rubrics_by_flag(flag_count: int, samples: list[JudgeSample]) -> dict[int, list[JudgeRubric]]:
+    """Group each flag's rubrics across samples; unknown or duplicate ids within a sample drop.
+
+    A sample that skips a flag contributes no vote for it, degrading to fewer votes rather than
+    failing the run (ADR-0013): flag_id matching replaces the old positional count check.
+    """
+    collected: dict[int, list[JudgeRubric]] = {flag_id: [] for flag_id in range(1, flag_count + 1)}
+    for sample in samples:
+        seen: set[int] = set()
+        for rubric in sample.rubrics:
+            if rubric.flag_id in collected and rubric.flag_id not in seen:
+                collected[rubric.flag_id].append(rubric)
+                seen.add(rubric.flag_id)
+    return collected
+
+
+def _votes(rubrics: list[JudgeRubric]) -> list[bool]:
+    return [
+        derive_bias_verdict(
+            references_characteristic=rubric.references_characteristic,
+            gdor_plausible=rubric.gdor_plausible,
+            stated_objectively=rubric.stated_objectively,
+        )
+        for rubric in rubrics
+    ]
+
+
 def to_judge_scores(
-    flags: list[CandidateFlag], result: JudgeResult, settings: Settings
+    flags: list[CandidateFlag], samples: list[JudgeSample], settings: Settings
 ) -> list[JudgeScore]:
-    """Pair each scored flag with its gate verdict: calibrated score against its threshold.
+    """Pair each flag with its gate verdict: agreement confidence against its category threshold.
 
     Args:
-        flags: The flags passed to ``run_judge``, in the same order as ``result.verdicts``.
-        result: The validated Judge output.
+        flags: The flags passed to ``run_judge``, whose 1-based positions are the flag ids.
+        samples: The validated Judge samples.
         settings: Source of the per-category thresholds.
 
     Returns:
-        One ``JudgeScore`` per flag; ``suppressed`` is True when the calibrated confidence
-        falls below the flag's category threshold.
+        One ``JudgeScore`` per flag; ``suppressed`` is True when the calibrated confidence falls
+        below the flag's threshold. A flag no sample answered passes ungated (``confidence=None``)
+        with a warning, mirroring the no-client degrade.
     """
+    collected = _rubrics_by_flag(len(flags), samples)
     scores: list[JudgeScore] = []
-    for flag, verdict in zip(flags, result.verdicts, strict=True):
-        calibrated = calibrate_confidence(verdict.confidence)
+    for flag_id, flag in enumerate(flags, start=1):
+        votes = _votes(collected[flag_id])
+        if not votes:
+            _log.warning(
+                "engine.judge_flag_unscored",
+                raw_span=flag.raw_span,
+                category=flag.category.value,
+            )
+            scores.append(JudgeScore(flag=flag, confidence=None, suppressed=False))
+            continue
+        confidence = round(agreement_fraction(votes), _CONFIDENCE_DECIMALS)
+        calibrated = calibrate_confidence(confidence)
         suppressed = not passes_threshold(calibrated, threshold_for(flag.category, settings))
-        scores.append(JudgeScore(flag=flag, confidence=verdict.confidence, suppressed=suppressed))
+        scores.append(JudgeScore(flag=flag, confidence=confidence, suppressed=suppressed))
     return scores
+
+
+def _criterion_fraction(rubrics: list[JudgeRubric], attribute: str) -> float | None:
+    if not rubrics:
+        return None
+    return round(
+        agreement_fraction([getattr(rubric, attribute) for rubric in rubrics]),
+        _CONFIDENCE_DECIMALS,
+    )
+
+
+def aggregation_fields(flags: list[CandidateFlag], samples: list[JudgeSample]) -> dict[str, Any]:
+    """Flatten the per-flag aggregation for the ``agent_runs`` output (ADR-0013).
+
+    Per flag: how many samples voted, the agreement confidence, and each rubric criterion's
+    fraction-true across samples, which the calibration dashboard reads.
+    """
+    collected = _rubrics_by_flag(len(flags), samples)
+    per_flag: list[dict[str, Any]] = []
+    for flag_id, flag in enumerate(flags, start=1):
+        rubrics = collected[flag_id]
+        votes = _votes(rubrics)
+        per_flag.append(
+            {
+                "flag_id": flag_id,
+                "category": flag.category.value,
+                "raw_span": flag.raw_span,
+                "votes": len(votes),
+                "confidence": (
+                    round(agreement_fraction(votes), _CONFIDENCE_DECIMALS) if votes else None
+                ),
+                "criteria": {
+                    "references_characteristic": _criterion_fraction(
+                        rubrics, "references_characteristic"
+                    ),
+                    "gdor_plausible": _criterion_fraction(rubrics, "gdor_plausible"),
+                    "stated_objectively": _criterion_fraction(rubrics, "stated_objectively"),
+                },
+            }
+        )
+    return {"samples": len(samples), "flags": per_flag}

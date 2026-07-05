@@ -19,7 +19,7 @@ from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.contextual_pass import ContextualFlag, ContextualPassResult
 from pattern_mirror.engine.drift import DriftCriterionFinding, DriftResult
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
-from pattern_mirror.engine.judge import JudgeResult, JudgeVerdict
+from pattern_mirror.engine.judge import JudgeRubric, JudgeSample
 from pattern_mirror.engine.orchestrator import (
     EngineNode,
     _adjudicator_node,
@@ -288,21 +288,33 @@ def test_default_graph_verifies_a_seeded_flag_end_to_end(db_session: Session) ->
 
 
 class _FakeJudgeClient:
-    """Returns fixed verdicts and fixed usage; the Anthropic call is never made."""
+    """Returns the same rubric sample for every self-consistency call; no Anthropic call is made."""
 
-    def __init__(self, result: JudgeResult) -> None:
-        self._result = result
+    def __init__(self, sample: JudgeSample) -> None:
+        self._sample = sample
         self._completion = SimpleNamespace(usage=SimpleNamespace(input_tokens=80, output_tokens=20))
 
     def create_with_completion(self, **kwargs: Any) -> tuple[Any, Any]:
-        return self._result, self._completion
+        return self._sample, self._completion
 
 
-def _settings(threshold: float = 0.7) -> Settings:
+def _biased_rubric(flag_id: int, *, biased: bool) -> JudgeRubric:
+    return JudgeRubric(
+        flag_id=flag_id,
+        references_characteristic=biased,
+        reference_style="coded" if biased else "none",
+        gdor_plausible=False,
+        stated_objectively=False,
+        reasoning="r",
+    )
+
+
+def _settings(threshold: float = 0.7, *, samples: int = 3) -> Settings:
     return Settings(
         app_env="test",
         database_url="postgresql+psycopg://x:y@localhost/db",
         judge_confidence_threshold=threshold,
+        judge_samples=samples,
     )
 
 
@@ -381,13 +393,10 @@ def test_judge_node_scores_contextual_gates_below_threshold_and_passes_dictionar
         _flag("culture fit"),
         _flag("recent graduate"),
     ]
+    # Every sample judges flag 1 (culture fit) biased and flag 2 (recent graduate) not, so
+    # unanimous agreement gives confidence 1.0 and 0.0 respectively.
     client = _FakeJudgeClient(
-        JudgeResult(
-            verdicts=[
-                JudgeVerdict(confidence=0.9, reasoning="strong"),
-                JudgeVerdict(confidence=0.4, reasoning="weak"),
-            ]
-        )
+        JudgeSample(rubrics=[_biased_rubric(1, biased=True), _biased_rubric(2, biased=False)])
     )
     node = _build_judge_node(db_session, client, "claude-haiku-4-5", _settings(threshold=0.7))
 
@@ -395,8 +404,8 @@ def test_judge_node_scores_contextual_gates_below_threshold_and_passes_dictionar
 
     assert [s.flag.raw_span for s in scores] == ["digital native", "culture fit", "recent graduate"]
     assert scores[0].confidence is None and scores[0].suppressed is False  # dictionary, ungated
-    assert scores[1].confidence == 0.9 and scores[1].suppressed is False  # contextual, kept
-    assert scores[2].confidence == 0.4 and scores[2].suppressed is True  # contextual, dropped
+    assert scores[1].confidence == 1.0 and scores[1].suppressed is False  # contextual, kept
+    assert scores[2].confidence == 0.0 and scores[2].suppressed is True  # contextual, dropped
 
     agent_run = db_session.scalars(
         select(AgentRun).where(AgentRun.document_id == document.id)
