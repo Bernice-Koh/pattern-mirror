@@ -1,8 +1,12 @@
-"""Confidence calibration and the Judge's threshold gate (ADR-0008)."""
+"""Confidence calibration, rubric derivation, and the Judge's threshold gate (ADR-0008/0013)."""
+
+import pytest
 
 from pattern_mirror.core.config import Settings
 from pattern_mirror.engine.calibration import (
+    agreement_fraction,
     calibrate_confidence,
+    derive_bias_verdict,
     passes_threshold,
     threshold_for,
 )
@@ -18,6 +22,39 @@ def _settings(
         judge_confidence_threshold=threshold,
         judge_confidence_threshold_overrides=overrides or {},
     )
+
+
+@pytest.mark.parametrize(
+    ("references", "gdor", "objective", "expected"),
+    [
+        (True, False, False, True),  # references a characteristic, no GDOR defence
+        (True, True, False, True),  # GDOR claimed but not stated objectively
+        (True, False, True, True),  # objective but no GDOR — still an identity reference
+        (True, True, True, False),  # genuine requirement, stated objectively
+        (False, False, False, False),  # no protected characteristic referenced
+    ],
+)
+def test_derive_bias_verdict_truth_table(
+    references: bool, gdor: bool, objective: bool, expected: bool
+) -> None:
+    assert (
+        derive_bias_verdict(
+            references_characteristic=references,
+            gdor_plausible=gdor,
+            stated_objectively=objective,
+        )
+        is expected
+    )
+
+
+def test_agreement_fraction_counts_true_votes() -> None:
+    assert agreement_fraction([True, True, True]) == 1.0
+    assert agreement_fraction([True, False, False]) == pytest.approx(1 / 3)
+    assert agreement_fraction([False, False]) == 0.0
+
+
+def test_agreement_fraction_of_no_votes_is_zero() -> None:
+    assert agreement_fraction([]) == 0.0
 
 
 def test_calibrate_confidence_is_the_identity_map() -> None:
