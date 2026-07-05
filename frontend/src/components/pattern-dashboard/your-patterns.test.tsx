@@ -96,6 +96,32 @@ describe('YourPatterns', () => {
     expect(screen.getByText('Product Designer')).toBeInTheDocument()
   })
 
+  it('suppresses a per-role card that duplicates an across-history one', async () => {
+    getPatternsMock.mockResolvedValue(
+      report([
+        writingPattern({ term: 'sharp', role_title: null }),
+        // Same term + category as the across-history pattern, scoped to a role that dominates the
+        // manager's writing — a duplicate, so its role section should not appear at all.
+        writingPattern({
+          mode: 'per_role',
+          term: 'sharp',
+          role_title: 'Markets Analyst',
+        }),
+      ]),
+    )
+
+    render(<YourPatterns />, { wrapper })
+
+    expect(await screen.findByText('Across your history')).toBeInTheDocument()
+    expect(screen.queryByText('Markets Analyst')).not.toBeInTheDocument()
+    // The pattern still appears once, under the whole-history heading.
+    expect(
+      screen.getAllByText(
+        '"sharp" appears in 6 documents — 5 about men, 1 about women.',
+      ),
+    ).toHaveLength(1)
+  })
+
   it('falls back to a generic scope label for a per-role pattern with no role title', async () => {
     getPatternsMock.mockResolvedValue(
       report([

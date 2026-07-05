@@ -29,16 +29,23 @@ function PatternGrid({
   )
 }
 
-/** Group per-role patterns under their role title; across-time under one history heading. */
+/** Group per-role patterns under their role title; across-time under one history heading. A
+ *  per-role pattern already shown across the whole history is dropped as a duplicate — when one
+ *  role dominates a manager's writing the two modes coincide, so a role section surfaces only the
+ *  patterns unique to that role (and disappears entirely when it has none). */
 function groupByScope(
   patterns: WritingPattern[],
 ): { title: string; patterns: WritingPattern[] }[] {
   const acrossTime = patterns.filter(
     (pattern) => pattern.mode === 'across_time',
   )
+  const acrossKeys = new Set(
+    acrossTime.map((pattern) => `${pattern.category}:${pattern.term}`),
+  )
   const byRole = new Map<string, WritingPattern[]>()
   for (const pattern of patterns) {
     if (pattern.mode !== 'per_role') continue
+    if (acrossKeys.has(`${pattern.category}:${pattern.term}`)) continue
     const role = pattern.role_title ?? 'A role'
     byRole.set(role, [...(byRole.get(role) ?? []), pattern])
   }
