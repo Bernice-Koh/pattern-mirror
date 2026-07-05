@@ -9,7 +9,7 @@ rubric answers, and a flag's confidence is the fraction of samples deriving bias
 ``to_judge_scores``; below-threshold flags are marked suppressed and terminate here.
 """
 
-import random
+import hashlib
 import time
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -120,14 +120,26 @@ def _flag_context(document_text: str, flag: CandidateFlag) -> str:
     return context_window(document_text, start, end)
 
 
+def _sample_order(flag_count: int, seed: int) -> list[int]:
+    """A per-sample flag order: 1-based ids sorted by a hash of (seed, id).
+
+    Deterministic and reproducible, and distinct across seeds, so it averages out prompt
+    position bias without a PRNG — the ordering carries no security or randomness requirement.
+    """
+    def key(flag_id: int) -> str:
+        return hashlib.sha256(f"{seed}:{flag_id}".encode()).hexdigest()
+
+    return sorted(range(1, flag_count + 1), key=key)
+
+
 def _user_prompt(
     flags: list[CandidateFlag], document_text: str, doc_type: DocType, seed: int
 ) -> str:
-    # Flag order is shuffled per sample (seeded, so a run is reproducible) to neutralise
-    # position bias; flag_id keys each rubric back regardless of order. The Contextual Pass's
-    # explanation is omitted so the Judge's evidence is the document, not the generator (ADR-0013).
-    numbered = list(enumerate(flags, start=1))
-    random.Random(seed).shuffle(numbered)
+    # Flag order varies per sample to neutralise position bias; flag_id keys each rubric back
+    # regardless of order. The Contextual Pass's explanation is omitted so the Judge's evidence
+    # is the document, not the generator (ADR-0013).
+    by_id = dict(enumerate(flags, start=1))
+    numbered = [(flag_id, by_id[flag_id]) for flag_id in _sample_order(len(flags), seed)]
     label = _DOC_TYPE_LABELS[doc_type]
     listing = "\n".join(
         f'[flag_id {flag_id}] "{flag.raw_span}" (claimed category: {flag.category.value})\n'

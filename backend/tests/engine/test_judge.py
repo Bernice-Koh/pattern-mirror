@@ -11,6 +11,7 @@ from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.judge import (
     JudgeRubric,
     JudgeSample,
+    _sample_order,
     aggregation_fields,
     context_window,
     run_judge,
@@ -88,6 +89,14 @@ def _settings(
         judge_confidence_threshold=threshold,
         judge_confidence_threshold_overrides=overrides or {},
     )
+
+
+def test_sample_order_is_a_reproducible_permutation_that_varies_by_seed() -> None:
+    orders = [_sample_order(4, seed) for seed in range(3)]
+
+    assert all(sorted(order) == [1, 2, 3, 4] for order in orders)  # each a full permutation
+    assert _sample_order(4, 0) == _sample_order(4, 0)  # reproducible for a fixed seed
+    assert len({tuple(order) for order in orders}) > 1  # order differs across seeds
 
 
 def test_context_window_cuts_the_containing_sentence() -> None:
