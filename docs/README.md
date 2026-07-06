@@ -8,6 +8,7 @@
 | [architecture/flags-and-suppression.md](architecture/flags-and-suppression.md) | Flag identity: signatures, sentence fingerprints, dismissal suppression | Anyone touching flag persistence or dismissals |
 | [architecture/dictionary-growth.md](architecture/dictionary-growth.md) | How the dictionary learns: trigger, four-agent debate, HR approval | Anyone touching the growth loop or dictionary |
 | [architecture/pattern-significance.md](architecture/pattern-significance.md) | Why a pattern surfaces: Fisher's exact gating on the dashboard | Anyone touching the Pattern Dashboard or aggregator |
+| [future.md](future.md) | Post-MVP design proposals — explicitly not built | Anyone curious where the architecture could go |
 | [CONVENTIONS.md](CONVENTIONS.md) | How we work: folder structure, testing, git, PRs, project management | Contributors |
 | [CODE_STYLE.md](CODE_STYLE.md) | Language-level style rules for Python and TypeScript | Contributors |
 | [adr/](adr/) | Architecture decision records — what was decided, when, and why | Anyone asking "why is it like this?" |
