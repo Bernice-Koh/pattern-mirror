@@ -32,6 +32,17 @@ HR Business Partners get a separate portal — aggregates only, never individual
 | **Trends Dashboard** | Firm-level aggregated bias trends. Any aggregate covering fewer than three managers is suppressed, so no figure can identify an individual. |
 | **Dictionary Review** | The approval queue for proposed dictionary additions: each candidate arrives with the reviewing agents' reasoning and citation; HR approves, rejects, or defers in monthly bulk. |
 
+### A look at the interface
+
+| | |
+|---|---|
+| ![JD Studio: live bias flagging on a job description, with dictionary flags and streamed contextual flags](docs/assets/jd-studio.jpg) | ![Feedback Checkpoint: drift panel showing which JD criteria the feedback addressed and which it missed](docs/assets/feedback-checkpoint.jpg) |
+| **JD Studio** — dictionary flags land instantly; the contextual pass streams in the rest. | **Feedback Checkpoint** — drift against the original JD's criteria, each backed by a verbatim quote. |
+| ![Promotion Writeup: bias and rubric-coverage check, with what the employee's peers say as corroborating evidence](docs/assets/promotion-writeup.jpg) | ![Pattern Dashboard: a recurring writing pattern surfaced with its supporting counts and p-value](docs/assets/pattern-dashboard.jpg) |
+| **Promotion Writeup** — rubric coverage set against what the employee's peers actually said. | **Pattern Dashboard** — only patterns that pass a significance test surface. |
+| ![HR Portal: firm-level aggregate bias trends, no individual manager content](docs/assets/hr-portal.jpg) | ![HR Portal dictionary review: pending phrases as a word cloud sized by how often they were flagged](docs/assets/hr-portal-word-cloud.jpg) |
+| **HR Portal** — aggregate-only firm trends, never individual content. | **Dictionary Review** — proposed phrases as a word cloud, sized by how often each was flagged. |
+
 ### Design principles
 
 - **Mirror, not judge.** The tool shows patterns to the manager; it never penalises.
