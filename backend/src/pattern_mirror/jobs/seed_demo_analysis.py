@@ -12,6 +12,7 @@ manager submitted live already has runs (they fire while editing), so it is skip
 demo documents have none, so they are the ones primed. A re-run is a no-op.
 """
 
+import sys
 from collections import deque
 
 import structlog
@@ -22,7 +23,7 @@ from pattern_mirror.core.config import get_settings
 from pattern_mirror.db.session import get_sessionmaker
 from pattern_mirror.engine.llm_agent import StructuredCompletionClient, build_instructor_client
 from pattern_mirror.models.documents import AnalysisRun, Document
-from pattern_mirror.models.enums import DocumentStatus
+from pattern_mirror.models.enums import AnalysisRunStatus, DocumentStatus
 from pattern_mirror.services.drift_reference import resolve_drift_reference
 from pattern_mirror.services.run_registry import get_run_registry
 from pattern_mirror.services.streaming_analysis import stream_analysis_events
@@ -31,12 +32,25 @@ _log = structlog.get_logger("pattern_mirror.jobs.seed_demo_analysis")
 
 
 def _unanalysed_submitted_documents(session: Session) -> list[Document]:
-    """Submitted documents with no analysis run yet — the seeded demo docs, not live submissions."""
-    has_run = select(AnalysisRun.id).where(AnalysisRun.document_id == Document.id).exists()
+    """Submitted documents with no *complete* run — seeded demo docs and any that failed priming.
+
+    Keyed on the absence of a ``complete`` run, not any run at all, so a document whose only runs
+    failed (e.g. the Anthropic call errored mid-batch on a spent credit balance) is retried on the
+    next run rather than skipped forever. A document a manager submitted live already has a complete
+    run, so it is still skipped — priming stays idempotent.
+    """
+    has_complete_run = (
+        select(AnalysisRun.id)
+        .where(
+            AnalysisRun.document_id == Document.id,
+            AnalysisRun.status == AnalysisRunStatus.complete,
+        )
+        .exists()
+    )
     return list(
         session.scalars(
             select(Document)
-            .where(Document.status == DocumentStatus.submitted, ~has_run)
+            .where(Document.status == DocumentStatus.submitted, ~has_complete_run)
             .order_by(Document.created_at)
         )
     )
@@ -83,6 +97,10 @@ def seed_demo_analysis(
 
 
 def main() -> None:
+    # Demo titles carry em dashes (e.g. "Director — Markets"); a Windows cp1252 console cannot
+    # encode them, so structlog's per-document line would crash the run mid-way. Force UTF-8 first.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     settings = get_settings()
     # Network-free to build; None when no key is configured, which runs dictionary-only.
     client = build_instructor_client(settings)

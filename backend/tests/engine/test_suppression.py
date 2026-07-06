@@ -113,10 +113,42 @@ def test_normalised_span_uses_the_lemma_key_when_present() -> None:
     assert normalised_span_of(flag) == "digital native"
 
 
-def test_normalised_span_derives_from_the_raw_span_for_contextual_flags() -> None:
+def test_normalised_span_of_a_contextual_span_with_no_adjective_keeps_the_full_lemma() -> None:
+    # "Culture Fits" has no adjective, so it falls back to the whole lemma key — no regression.
     flag = _flag("We value Culture Fits.", "Culture Fits", stage=FlagSourceStage.contextual)
 
     assert normalised_span_of(flag) == "culture fit"
+
+
+def test_contextual_span_reduces_to_its_adjective_lemma() -> None:
+    # The coded concept is the adjective; the phrase around it is incidental, so it drops out.
+    flag = _flag(
+        "He took an aggressive stance.", "an aggressive stance", stage=FlagSourceStage.contextual
+    )
+
+    assert normalised_span_of(flag) == "aggressive"
+
+
+def test_contextual_spans_sharing_an_adjective_share_one_key() -> None:
+    # The fragmentation fix: two wordings of one concept must group, or no pattern reaches the
+    # significance count. Both reduce to "polished".
+    stage = FlagSourceStage.contextual
+    one = _flag("A polished communicator.", "polished communicator", stage=stage)
+    two = _flag("Her polished delivery stood out.", "polished delivery", stage=stage)
+
+    assert normalised_span_of(one) == normalised_span_of(two) == "polished"
+
+
+def test_contextual_span_reduces_to_its_first_adjective() -> None:
+    # A span with more than one adjective takes the head (first) one, not a join, so it still
+    # groups with the bare form.
+    flag = _flag(
+        "an aggressive, competitive streak",
+        "aggressive, competitive streak",
+        stage=FlagSourceStage.contextual,
+    )
+
+    assert normalised_span_of(flag) == "aggressive"
 
 
 def test_partition_routes_a_matching_flag_to_suppressed() -> None:

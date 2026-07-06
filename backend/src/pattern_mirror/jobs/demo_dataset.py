@@ -11,9 +11,21 @@ from importlib.resources import files
 
 from pydantic import BaseModel, model_validator
 
-from pattern_mirror.models.enums import DocType, DocumentStatus, SubjectType
+from pattern_mirror.models.enums import DocType, DocumentStatus, SubjectType, UserRole
 
 _DATASET_RESOURCE = "demo_dataset.json"
+
+
+class ManagerSeed(BaseModel):
+    """A synthetic manager who owns writeups. Each demo document names its owner by
+    ``external_user_id``, so the dataset can carry more than one manager (each with their own,
+    privacy-scoped history) rather than the single hard-coded owner the seed once assumed."""
+
+    external_user_id: str
+    legal_name: str
+    email: str
+    department: str
+    role: UserRole = UserRole.manager
 
 
 class SubjectSeed(BaseModel):
@@ -27,21 +39,25 @@ class SubjectSeed(BaseModel):
 
 
 class DocumentSeed(BaseModel):
-    """A synthetic JD or feedback note. ``subject_ref`` links feedback to a subject; JDs omit it.
+    """A synthetic JD, feedback note, or promotion writeup, owned by ``owner_ref``.
 
-    ``criteria`` are a JD's stated requirements — the drift reference feedback is checked
-    against (#116). Only JDs carry them; feedback leaves the list empty. ``status`` defaults to
-    submitted (the finished history the Pattern Dashboard mines); one draft feedback note is
-    seeded so the Feedback Checkpoint's live write→analyze→submit flow is demoable.
+    ``subject_ref`` links feedback/promotion to a subject; JDs omit it. ``criteria`` are a JD's
+    stated requirements — the drift reference feedback is checked against (#116); only JDs carry
+    them. ``status`` defaults to submitted (the finished history the Pattern Dashboard mines);
+    a few drafts are seeded so the live write→analyze→submit flow is demoable.
+    ``submitted_days_ago`` back-dates a submitted document so history spreads across months —
+    without it every row lands "now" and the monthly trends collapse to a single point.
     """
 
     title: str
     doc_type: DocType
+    owner_ref: str
     role_title: str | None = None
     subject_ref: str | None = None
     content: str
     criteria: list[str] = []
     status: DocumentStatus = DocumentStatus.submitted
+    submitted_days_ago: int | None = None
 
 
 class PeerFeedbackSeed(BaseModel):
@@ -83,10 +99,11 @@ class PeerCorroborationSeed(BaseModel):
 
 
 class DemoDataset(BaseModel):
-    """The whole dataset: the subjects, the documents written about (or for) them, the peer feedback
-    on the employees, and the promotion rubrics + peer corroboration a promotion writeup is checked
-    against."""
+    """The whole dataset: the managers who own the writeups, the subjects the documents are written
+    about (or for), the documents themselves, the peer feedback on the employees, and the promotion
+    rubrics + peer corroboration a promotion writeup is checked against."""
 
+    managers: list[ManagerSeed] = []
     subjects: list[SubjectSeed]
     documents: list[DocumentSeed]
     peer_feedback: list[PeerFeedbackSeed] = []
@@ -100,6 +117,28 @@ class DemoDataset(BaseModel):
         unique_refs = set(external_refs)
         if len(external_refs) != len(unique_refs):
             raise ValueError("duplicate subject external_ref in demo dataset")
+
+        manager_ids = {manager.external_user_id for manager in self.managers}
+        unowned = {
+            document.owner_ref
+            for document in self.documents
+            if document.owner_ref not in manager_ids
+        }
+        if unowned:
+            raise ValueError(f"document owner_ref(s) with no matching manager: {sorted(unowned)}")
+
+        # Feedback links to its JD by shared role_title within an owner (seed_demo._jd_id_by_role),
+        # so two JDs one manager owns must not share a role_title or one silently shadows the other.
+        seen_jd_roles: set[tuple[str, str]] = set()
+        for document in self.documents:
+            if document.doc_type is DocType.jd and document.role_title is not None:
+                key = (document.owner_ref, document.role_title)
+                if key in seen_jd_roles:
+                    raise ValueError(
+                        f"manager {document.owner_ref} has two JDs for role {document.role_title!r}"
+                    )
+                seen_jd_roles.add(key)
+
         unknown = {
             document.subject_ref
             for document in self.documents

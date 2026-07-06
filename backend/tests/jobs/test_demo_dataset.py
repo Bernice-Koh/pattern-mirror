@@ -6,8 +6,19 @@ from pydantic import ValidationError
 from pattern_mirror.jobs.demo_dataset import DemoDataset, load_demo_dataset
 from pattern_mirror.models.enums import DocType, SubjectType
 
+# A minimal valid manager the reject-tests reuse so documents get past owner resolution to the
+# specific validator each test exercises.
+_MANAGER = {
+    "external_user_id": "m-1",
+    "legal_name": "One",
+    "email": "one@example.test",
+    "department": "A",
+}
 
-def test_loads_a_balanced_candidate_pool() -> None:
+
+def test_loads_a_gender_balanced_candidate_pool() -> None:
+    # Writing patterns correlate a coded term against candidate gender, so the pool must be roughly
+    # balanced for an asymmetry ("5 of 5 called aggressive are men") to be meaningful.
     dataset = load_demo_dataset()
 
     genders = [
@@ -15,8 +26,18 @@ def test_loads_a_balanced_candidate_pool() -> None:
         for subject in dataset.subjects
         if subject.subject_type is SubjectType.candidate
     ]
-    assert genders.count("male") == 12
-    assert genders.count("female") == 12
+    males = genders.count("male")
+    females = genders.count("female")
+    assert males > 0 and females > 0
+    assert abs(males - females) <= 2
+
+
+def test_every_document_is_owned_by_a_declared_manager() -> None:
+    dataset = load_demo_dataset()
+
+    manager_ids = {manager.external_user_id for manager in dataset.managers}
+    assert dataset.managers
+    assert all(document.owner_ref in manager_ids for document in dataset.documents)
 
 
 def test_every_feedback_document_links_to_a_subject() -> None:
@@ -101,11 +122,13 @@ def test_rejects_promotion_without_a_rubric_for_its_level() -> None:
     with pytest.raises(ValidationError, match="no rubric"):
         DemoDataset.model_validate(
             {
+                "managers": [_MANAGER],
                 "subjects": [{"external_ref": "e1", "legal_name": "E", "subject_type": "employee"}],
                 "documents": [
                     {
                         "title": "t",
                         "doc_type": "promotion",
+                        "owner_ref": "m-1",
                         "role_title": "Director — Nowhere",
                         "subject_ref": "e1",
                         "content": "x",
@@ -113,6 +136,81 @@ def test_rejects_promotion_without_a_rubric_for_its_level() -> None:
                 ],
             }
         )
+
+
+def test_rejects_a_document_owned_by_no_manager() -> None:
+    with pytest.raises(ValidationError, match="owner_ref"):
+        DemoDataset.model_validate(
+            {
+                "managers": [_MANAGER],
+                "subjects": [
+                    {"external_ref": "c1", "legal_name": "A", "subject_type": "candidate"}
+                ],
+                "documents": [
+                    {"title": "t", "doc_type": "jd", "owner_ref": "ghost", "content": "x"}
+                ],
+            }
+        )
+
+
+def test_rejects_one_manager_owning_two_jds_for_a_role() -> None:
+    with pytest.raises(ValidationError, match="two JDs for role"):
+        DemoDataset.model_validate(
+            {
+                "managers": [_MANAGER],
+                "subjects": [],
+                "documents": [
+                    {
+                        "title": "A",
+                        "doc_type": "jd",
+                        "owner_ref": "m-1",
+                        "role_title": "Analyst",
+                        "content": "x",
+                    },
+                    {
+                        "title": "B",
+                        "doc_type": "jd",
+                        "owner_ref": "m-1",
+                        "role_title": "Analyst",
+                        "content": "x",
+                    },
+                ],
+            }
+        )
+
+
+def test_two_managers_may_run_the_same_role() -> None:
+    dataset = DemoDataset.model_validate(
+        {
+            "managers": [
+                _MANAGER,
+                {
+                    "external_user_id": "m-2",
+                    "legal_name": "T",
+                    "email": "t@example.test",
+                    "department": "B",
+                },
+            ],
+            "subjects": [],
+            "documents": [
+                {
+                    "title": "A",
+                    "doc_type": "jd",
+                    "owner_ref": "m-1",
+                    "role_title": "Analyst",
+                    "content": "x",
+                },
+                {
+                    "title": "B",
+                    "doc_type": "jd",
+                    "owner_ref": "m-2",
+                    "role_title": "Analyst",
+                    "content": "x",
+                },
+            ],
+        }
+    )
+    assert len(dataset.documents) == 2
 
 
 def test_rejects_peer_feedback_pointing_at_a_non_employee() -> None:
@@ -153,6 +251,7 @@ def test_rejects_document_pointing_at_unknown_subject() -> None:
     with pytest.raises(ValidationError, match="no matching subject"):
         DemoDataset.model_validate(
             {
+                "managers": [_MANAGER],
                 "subjects": [
                     {"external_ref": "s1", "legal_name": "A", "subject_type": "candidate"}
                 ],
@@ -160,6 +259,7 @@ def test_rejects_document_pointing_at_unknown_subject() -> None:
                     {
                         "title": "t",
                         "doc_type": "feedback",
+                        "owner_ref": "m-1",
                         "subject_ref": "ghost",
                         "content": "x",
                     }
