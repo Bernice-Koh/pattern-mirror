@@ -1,12 +1,16 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearch } from '@tanstack/react-router'
+import { cn } from '@/lib/cn'
 import { Button } from '@/components/ui/button'
 import { ReviewQueueRow } from '@/components/hr-portal/review-queue-row'
 import { ReviewCandidateModal } from '@/components/hr-portal/review-candidate-modal'
+import { DictionaryWordCloud } from '@/components/hr-portal/dictionary-word-cloud'
 import { getPendingAdditions } from '@/lib/growth-client'
 
 const PAGE_SIZE = 10
+
+type ReviewView = 'cloud' | 'list'
 
 /** The full HR dictionary review queue (#72): every pending addition, paginated, each opening into
  *  a focused review of the four agents' reasoning and the citation. Reached from the HR Portal
@@ -20,6 +24,7 @@ export function HrDictionaryReview() {
   const items = additions.data ?? []
 
   const [page, setPage] = useState(0)
+  const [view, setView] = useState<ReviewView>('cloud')
   const [selectedId, setSelectedId] = useState<string | null>(
     search.addition ?? null,
   )
@@ -62,45 +67,56 @@ export function HrDictionaryReview() {
           </div>
         ) : (
           <>
-            <div className="rounded-card bg-surface p-2 shadow-ring-card">
-              {visible.map((addition, index) => (
-                <div
-                  key={addition.id}
-                  className={index === 0 ? '' : 'border-t border-border'}
-                >
-                  <ReviewQueueRow
-                    rank={start + index + 1}
-                    phrase={addition.phrase}
-                    category={addition.proposed_category}
-                    status={addition.status}
-                    onReview={() => setSelectedId(addition.id)}
-                  />
-                </div>
-              ))}
-            </div>
+            <ViewToggle view={view} onChange={setView} />
 
-            {pageCount > 1 && (
-              <div className="mt-5 flex items-center gap-4">
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((current) => current - 1)}
-                  disabled={page === 0}
-                >
-                  Previous
-                </Button>
-                <span className="font-sans text-label text-ink-muted">
-                  Page {page + 1} of {pageCount}
-                </span>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setPage((current) => current + 1)}
-                  disabled={page >= pageCount - 1}
-                >
-                  Next
-                </Button>
-              </div>
+            {view === 'cloud' ? (
+              <DictionaryWordCloud
+                additions={items}
+                onReview={(addition) => setSelectedId(addition.id)}
+              />
+            ) : (
+              <>
+                <div className="rounded-card bg-surface p-2 shadow-ring-card">
+                  {visible.map((addition, index) => (
+                    <div
+                      key={addition.id}
+                      className={index === 0 ? '' : 'border-t border-border'}
+                    >
+                      <ReviewQueueRow
+                        rank={start + index + 1}
+                        phrase={addition.phrase}
+                        category={addition.proposed_category}
+                        status={addition.status}
+                        onReview={() => setSelectedId(addition.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {pageCount > 1 && (
+                  <div className="mt-5 flex items-center gap-4">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setPage((current) => current - 1)}
+                      disabled={page === 0}
+                    >
+                      Previous
+                    </Button>
+                    <span className="font-sans text-label text-ink-muted">
+                      Page {page + 1} of {pageCount}
+                    </span>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setPage((current) => current + 1)}
+                      disabled={page >= pageCount - 1}
+                    >
+                      Next
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -113,5 +129,39 @@ export function HrDictionaryReview() {
         />
       )}
     </main>
+  )
+}
+
+interface ViewToggleProps {
+  view: ReviewView
+  onChange: (view: ReviewView) => void
+}
+
+const VIEW_OPTIONS: { value: ReviewView; label: string }[] = [
+  { value: 'cloud', label: 'Cloud' },
+  { value: 'list', label: 'List' },
+]
+
+/** Segmented switch between the word-cloud and the paginated list view of the queue. */
+function ViewToggle({ view, onChange }: Readonly<ViewToggleProps>) {
+  return (
+    <div className="mb-5 inline-flex gap-1 rounded-pill bg-chip-track p-1">
+      {VIEW_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={view === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            'rounded-pill px-4 py-1.5 font-sans text-label font-semibold transition-colors',
+            view === option.value
+              ? 'bg-surface text-ink shadow-ring-card'
+              : 'text-ink-muted hover:text-ink',
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   )
 }

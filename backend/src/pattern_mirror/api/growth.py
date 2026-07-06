@@ -13,16 +13,19 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from pattern_mirror.api.deps import get_current_principal, require_hr
 from pattern_mirror.db.session import get_session
+from pattern_mirror.models.engine import Flag
 from pattern_mirror.models.enums import (
     AgentName,
     BiasCategory,
     CitationSourceType,
     DictionaryAdditionStatus,
+    FlagScope,
+    FlagSourceStage,
 )
 from pattern_mirror.models.growth import PendingDictionaryAddition
 from pattern_mirror.models.reference import Citation
@@ -62,6 +65,9 @@ class PendingAdditionResponse(BaseModel):
     created_at: datetime
     decided_at: datetime | None
     citation: CitationSummary | None
+    # How many contextual-pass flags proposed this phrase firm-wide — the recurrence that made it
+    # a growth candidate, surfaced so HR can triage by how often managers actually wrote it.
+    flag_count: int
 
 
 class DictionaryEntryResponse(BaseModel):
@@ -113,7 +119,9 @@ class ProposalAuditResponse(BaseModel):
     live_entry: LiveEntryResponse | None
 
 
-def _serialise_addition(addition: PendingDictionaryAddition) -> PendingAdditionResponse:
+def _serialise_addition(
+    addition: PendingDictionaryAddition, flag_count: int = 0
+) -> PendingAdditionResponse:
     return PendingAdditionResponse(
         id=addition.id,
         proposal_id=addition.proposal_id,
@@ -124,6 +132,7 @@ def _serialise_addition(addition: PendingDictionaryAddition) -> PendingAdditionR
         created_at=addition.created_at,
         decided_at=addition.decided_at,
         citation=_serialise_citation(addition.proposal.citation),
+        flag_count=flag_count,
     )
 
 
@@ -175,13 +184,39 @@ def _serialise_audit(audit: ProposalAudit) -> ProposalAuditResponse:
 def list_pending_additions(
     session: Annotated[Session, Depends(get_session)],
 ) -> list[PendingAdditionResponse]:
-    """Return the growth additions still open to a decision, oldest first."""
+    """Return the additions still open to a decision, most-flagged first, oldest breaking ties."""
     additions = session.scalars(
         select(PendingDictionaryAddition)
         .where(PendingDictionaryAddition.status.in_(_OPEN_STATUSES))
         .order_by(PendingDictionaryAddition.created_at)
     ).all()
-    return [_serialise_addition(addition) for addition in additions]
+    counts = _flag_counts(session, [addition.lemma_key for addition in additions])
+    ordered = sorted(
+        additions, key=lambda addition: counts.get(addition.lemma_key, 0), reverse=True
+    )
+    return [
+        _serialise_addition(addition, counts.get(addition.lemma_key, 0)) for addition in ordered
+    ]
+
+
+def _flag_counts(session: Session, lemma_keys: list[str]) -> dict[str, int]:
+    """Count the contextual-pass general flags behind each lemma key, in one grouped query."""
+    if not lemma_keys:
+        return {}
+    rows = (
+        session.execute(
+            select(Flag.normalised_span, func.count())
+            .where(
+                Flag.source_stage == FlagSourceStage.contextual,
+                Flag.scope == FlagScope.general,
+                Flag.normalised_span.in_(lemma_keys),
+            )
+            .group_by(Flag.normalised_span)
+        )
+        .tuples()
+        .all()
+    )
+    return dict(rows)
 
 
 @router.post(

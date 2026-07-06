@@ -38,6 +38,7 @@ function addition(index: number): PendingAddition {
     created_at: '2026-06-01T00:00:00Z',
     decided_at: null,
     citation: null,
+    flag_count: index,
   }
 }
 
@@ -68,13 +69,14 @@ describe('HrDictionaryReview', () => {
     useSearchMock.mockReturnValue({})
   })
 
-  it('lists the pending phrases', async () => {
+  it('shows the pending phrases in the cloud view by default', async () => {
     getPendingAdditionsMock.mockResolvedValue([addition(1), addition(2)])
 
     render(<HrDictionaryReview />, { wrapper })
 
     expect(await screen.findByText('phrase 1')).toBeInTheDocument()
     expect(screen.getByText('phrase 2')).toBeInTheDocument()
+    expect(screen.getByText('Larger = flagged more often.')).toBeInTheDocument()
   })
 
   it('shows an empty state when the queue is clear', async () => {
@@ -87,14 +89,16 @@ describe('HrDictionaryReview', () => {
     ).toBeInTheDocument()
   })
 
-  it('paginates a queue larger than one page', async () => {
+  it('paginates a queue larger than one page in the list view', async () => {
     getPendingAdditionsMock.mockResolvedValue(
       Array.from({ length: 12 }, (_, i) => addition(i + 1)),
     )
 
     render(<HrDictionaryReview />, { wrapper })
 
-    expect(await screen.findByText('Page 1 of 2')).toBeInTheDocument()
+    fireEvent.click(await screen.findByRole('button', { name: 'List' }))
+
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument()
     expect(screen.getByText('phrase 10')).toBeInTheDocument()
     expect(screen.queryByText('phrase 11')).toBeNull()
 
@@ -104,13 +108,28 @@ describe('HrDictionaryReview', () => {
     expect(screen.getByText('phrase 11')).toBeInTheDocument()
   })
 
-  it('opens the review modal for a phrase', async () => {
+  it('opens the review modal from a word in the cloud', async () => {
     getPendingAdditionsMock.mockResolvedValue([addition(1)])
     getProposalAuditMock.mockResolvedValue(AUDIT)
 
     render(<HrDictionaryReview />, { wrapper })
 
-    fireEvent.click(await screen.findByText('Review →'))
+    fireEvent.click(await screen.findByText('phrase 1'))
+
+    expect(
+      await screen.findByText('What the review agents said'),
+    ).toBeInTheDocument()
+    expect(getProposalAuditMock).toHaveBeenCalledWith('p1')
+  })
+
+  it('opens the review modal from a row in the list view', async () => {
+    getPendingAdditionsMock.mockResolvedValue([addition(1)])
+    getProposalAuditMock.mockResolvedValue(AUDIT)
+
+    render(<HrDictionaryReview />, { wrapper })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'List' }))
+    fireEvent.click(screen.getByText('Review →'))
 
     expect(
       await screen.findByText('What the review agents said'),

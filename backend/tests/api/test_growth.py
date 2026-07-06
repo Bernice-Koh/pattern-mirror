@@ -2,6 +2,7 @@
 
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,11 +14,16 @@ from pattern_mirror.db.session import get_session
 from pattern_mirror.main import create_app
 from pattern_mirror.models.audit import AgentRun
 from pattern_mirror.models.dictionary import Dictionary
+from pattern_mirror.models.documents import Document
+from pattern_mirror.models.engine import Flag
 from pattern_mirror.models.enums import (
     AgentName,
     BiasCategory,
     CitationSourceType,
     DictionaryAdditionStatus,
+    DocType,
+    FlagScope,
+    FlagSourceStage,
     UserRole,
 )
 from pattern_mirror.models.growth import DictionaryProposal, PendingDictionaryAddition
@@ -65,7 +71,9 @@ def anon_client(db_session: Session) -> Iterator[TestClient]:
     yield from _client(db_session, None)
 
 
-def _seed_pending(db_session: Session, *, lemma_key: str) -> PendingDictionaryAddition:
+def _seed_pending(
+    db_session: Session, *, lemma_key: str, created_at: datetime | None = None
+) -> PendingDictionaryAddition:
     citation = Citation(
         source_type=CitationSourceType.regulatory,
         title="Fair hiring guideline",
@@ -85,6 +93,8 @@ def _seed_pending(db_session: Session, *, lemma_key: str) -> PendingDictionaryAd
         proposed_category=BiasCategory.age,
         explanation="Youth-coded phrasing that deters older candidates.",
     )
+    if created_at is not None:
+        addition.created_at = created_at
     db_session.add(addition)
     db_session.flush()
     return addition
@@ -109,10 +119,39 @@ def _record_agents(db_session: Session, proposal_id: uuid.UUID) -> None:
     db_session.flush()
 
 
+def _seed_contextual_flags(db_session: Session, *, lemma_key: str, count: int) -> None:
+    """Record ``count`` contextual, general flags whose span matches ``lemma_key``."""
+    owner = User(
+        external_user_id=f"flag-owner-{uuid.uuid4()}",
+        legal_name="Flag Owner",
+        email=f"flag.owner.{uuid.uuid4()}@example.com",
+    )
+    db_session.add(owner)
+    db_session.flush()
+    document = Document(owner_id=owner.id, doc_type=DocType.jd, content=lemma_key)
+    db_session.add(document)
+    db_session.flush()
+    for _ in range(count):
+        db_session.add(
+            Flag(
+                document_id=document.id,
+                source_stage=FlagSourceStage.contextual,
+                category=BiasCategory.age,
+                scope=FlagScope.general,
+                raw_span=lemma_key,
+                normalised_span=lemma_key,
+                sentence_fingerprint="fp",
+                rationale={"explanation": "coded language"},
+            )
+        )
+    db_session.flush()
+
+
 def test_list_returns_pending_additions_with_their_citation(
     hr_client: TestClient, db_session: Session
 ) -> None:
     addition = _seed_pending(db_session, lemma_key="growth phrase one")
+    _seed_contextual_flags(db_session, lemma_key="growth phrase one", count=3)
 
     response = hr_client.get("/growth/pending-additions")
 
@@ -123,6 +162,32 @@ def test_list_returns_pending_additions_with_their_citation(
     assert body[0]["proposal_id"] == str(addition.proposal_id)
     assert body[0]["status"] == DictionaryAdditionStatus.pending.value
     assert body[0]["citation"]["reference"] == "TAFEP-2021-3"
+    assert body[0]["flag_count"] == 3
+
+
+def test_list_orders_by_flag_count_then_oldest(hr_client: TestClient, db_session: Session) -> None:
+    # "rare" precedes "common" by age but sorts after it by flag count; the two equally-flagged
+    # phrases keep age order, oldest first — timestamps are explicit as now() is constant per txn.
+    older = datetime(2026, 1, 1, tzinfo=UTC)
+    newer = datetime(2026, 2, 1, tzinfo=UTC)
+    _seed_pending(db_session, lemma_key="rare phrase")
+    _seed_pending(db_session, lemma_key="common phrase")
+    _seed_pending(db_session, lemma_key="older tied phrase", created_at=older)
+    _seed_pending(db_session, lemma_key="newer tied phrase", created_at=newer)
+    _seed_contextual_flags(db_session, lemma_key="rare phrase", count=1)
+    _seed_contextual_flags(db_session, lemma_key="common phrase", count=5)
+    _seed_contextual_flags(db_session, lemma_key="older tied phrase", count=2)
+    _seed_contextual_flags(db_session, lemma_key="newer tied phrase", count=2)
+
+    body = hr_client.get("/growth/pending-additions").json()
+
+    assert [item["phrase"] for item in body] == [
+        "common phrase",
+        "older tied phrase",
+        "newer tied phrase",
+        "rare phrase",
+    ]
+    assert [item["flag_count"] for item in body] == [5, 2, 2, 1]
 
 
 def test_approve_creates_entry_and_marks_addition_approved(
