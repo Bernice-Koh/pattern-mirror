@@ -63,14 +63,12 @@ def test_is_idempotent(db_session: Session) -> None:
     seed_demo_users(db_session)
     db_session.flush()
 
-    users = db_session.scalar(
-        select(func.count())
-        .select_from(User)
-        .where(User.external_user_id.in_([DEMO_MANAGER_EXTERNAL_ID, DEMO_HR_EXTERNAL_ID]))
-    )
+    # The roster is the dataset's managers plus the one fixed HR reviewer.
+    expected = len(load_demo_dataset().managers) + 1
+    users = db_session.scalar(select(func.count()).select_from(User))
     roles = db_session.scalar(select(func.count()).select_from(UserRoleAssignment))
-    assert users == 2
-    assert roles == 2
+    assert users == expected
+    assert roles == expected
 
 
 @pytest.mark.db
@@ -81,12 +79,16 @@ def test_seeds_subjects_and_feedback_owned_by_the_manager(
 
     dataset = load_demo_dataset()
     manager = _user(db_session, DEMO_MANAGER_EXTERNAL_ID)
+    expected_docs = sum(
+        1 for document in dataset.documents if document.owner_ref == DEMO_MANAGER_EXTERNAL_ID
+    )
     subjects = db_session.scalar(select(func.count()).select_from(Subject))
     documents = db_session.scalar(
         select(func.count()).select_from(Document).where(Document.owner_id == manager.id)
     )
     assert subjects == len(dataset.subjects)
-    assert documents == len(dataset.documents)
+    assert expected_docs > 0
+    assert documents == expected_docs
 
 
 @pytest.mark.db
@@ -185,6 +187,35 @@ def test_feedback_links_to_the_jd_for_its_role(
 
 
 @pytest.mark.db
+def test_documents_span_every_declared_manager(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+
+    dataset = load_demo_dataset()
+    owners = db_session.scalars(select(Document.owner_id).distinct()).all()
+    assert len(set(owners)) == len(dataset.managers)
+
+
+@pytest.mark.db
+def test_feedback_links_only_to_its_own_managers_jd(
+    db_session: Session, blob_store: InMemoryBlobStore
+) -> None:
+    _seed(db_session, blob_store)
+
+    linked = db_session.scalars(
+        select(Document).where(
+            Document.doc_type == DocType.feedback, Document.reference_jd_id.is_not(None)
+        )
+    ).all()
+    assert linked
+    for feedback in linked:
+        jd = db_session.get(Document, feedback.reference_jd_id)
+        assert jd is not None
+        assert jd.owner_id == feedback.owner_id
+
+
+@pytest.mark.db
 def test_seeds_a_draft_feedback_linked_to_its_jd(
     db_session: Session, blob_store: InMemoryBlobStore
 ) -> None:
@@ -228,16 +259,18 @@ def test_peer_feedback_hangs_off_an_employee_subject(
 
 
 @pytest.mark.db
-def test_promotion_draft_carries_its_employee_subject(
+def test_promotion_carries_its_employee_subject(
     db_session: Session, blob_store: InMemoryBlobStore
 ) -> None:
     _seed(db_session, blob_store)
 
+    # Promotion writeups seed as submitted history so priming analyses them and their rubric
+    # coverage / peer corroboration re-hydrate on reopen.
     promotion = db_session.scalar(
         select(Document).where(Document.doc_type == DocType.promotion).limit(1)
     )
     assert promotion is not None
-    assert promotion.status is DocumentStatus.draft
+    assert promotion.status is DocumentStatus.submitted
     assert promotion.subject_id is not None
     subject = db_session.get(Subject, promotion.subject_id)
     assert subject is not None

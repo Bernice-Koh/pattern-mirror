@@ -10,7 +10,7 @@ Re-running only inserts what is missing — users by ``external_user_id``, subje
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,35 +42,50 @@ class UserSeed:
 DEMO_MANAGER_EXTERNAL_ID = "demo-manager-1"
 DEMO_HR_EXTERNAL_ID = "demo-hr-1"
 
-_ROSTER: list[UserSeed] = [
-    UserSeed(
-        external_user_id=DEMO_MANAGER_EXTERNAL_ID,
-        legal_name="Alex Tan",
-        email="alex.tan@example.com",
-        department="Markets",
-        role=UserRole.manager,
-    ),
-    UserSeed(
-        external_user_id=DEMO_HR_EXTERNAL_ID,
-        legal_name="Jordan Lee",
-        email="jordan.lee@example.com",
-        department="Human Resources",
-        role=UserRole.hr,
-    ),
-]
+# The HR reviewer is fixed in code (they own no writeups, so they aren't part of the dataset's
+# manager list); the managers who own documents come from the dataset, so the fixture can carry
+# more than one without touching this file.
+_HR_USER = UserSeed(
+    external_user_id=DEMO_HR_EXTERNAL_ID,
+    legal_name="Jordan Lee",
+    email="jordan.lee@example.com",
+    department="Human Resources",
+    role=UserRole.hr,
+)
 
 
-def seed_demo_users(session: Session) -> None:
-    """Insert any roster user and role assignment not already present."""
+def _roster(dataset: DemoDataset) -> list[UserSeed]:
+    """The users to seed: the fixed HR reviewer plus every manager the dataset declares."""
+    managers = [
+        UserSeed(
+            external_user_id=manager.external_user_id,
+            legal_name=manager.legal_name,
+            email=manager.email,
+            department=manager.department,
+            role=manager.role,
+        )
+        for manager in dataset.managers
+    ]
+    return [_HR_USER, *managers]
+
+
+def seed_demo_users(session: Session, dataset: DemoDataset | None = None) -> None:
+    """Insert any roster user and role assignment not already present.
+
+    The roster is the HR reviewer plus the dataset's managers, so a fixture with more managers
+    seeds more logins. Idempotent by ``external_user_id``.
+    """
+    dataset = dataset or load_demo_dataset()
+    roster = _roster(dataset)
     existing = {
         user.external_user_id: user
         for user in session.scalars(
             select(User).where(
-                User.external_user_id.in_([seed.external_user_id for seed in _ROSTER])
+                User.external_user_id.in_([seed.external_user_id for seed in roster])
             )
         ).all()
     }
-    for seed in _ROSTER:
+    for seed in roster:
         user = existing.get(seed.external_user_id)
         if user is None:
             user = User(
@@ -85,20 +100,38 @@ def seed_demo_users(session: Session) -> None:
             session.add(UserRoleAssignment(user_id=user.id, role=seed.role))
 
 
-def _demo_manager(session: Session) -> User:
-    """The demo manager who owns the seeded documents; seed the users first."""
-    manager = session.scalar(select(User).where(User.external_user_id == DEMO_MANAGER_EXTERNAL_ID))
-    if manager is None:
-        raise RuntimeError("demo manager is not seeded; run seed_demo_users first")
-    return manager
+def _managers_by_ref(session: Session, dataset: DemoDataset) -> dict[str, User]:
+    """Resolve each dataset manager's ``external_user_id`` to its seeded ``User`` row.
+
+    Every document names its owner by this ref, so the content seed can spread documents across
+    managers. Seed the users first — a missing manager is a seeding-order bug, not a silent skip.
+    """
+    wanted = [manager.external_user_id for manager in dataset.managers]
+    by_ref = {
+        user.external_user_id: user
+        for user in session.scalars(select(User).where(User.external_user_id.in_(wanted))).all()
+    }
+    missing = [ref for ref in wanted if ref not in by_ref]
+    if missing:
+        raise RuntimeError(
+            f"demo manager is not seeded (owner {missing[0]}); run seed_demo_users first"
+        )
+    return by_ref
 
 
-def _jd_id_by_role(session: Session, owner_id: uuid.UUID) -> dict[str, uuid.UUID]:
-    """Map each role title to its JD document id, so feedback links to the JD for its role."""
+def _jd_id_by_owner_role(
+    session: Session, owner_ids: list[uuid.UUID]
+) -> dict[tuple[uuid.UUID, str], uuid.UUID]:
+    """Map each (owner, role title) to its JD id, so feedback links to its own manager's JD.
+
+    Keyed by owner as well as role so two managers can each run the same role without their
+    feedback cross-linking to the other's JD (the dataset validator forbids one manager owning
+    two JDs for one role, which would otherwise shadow).
+    """
     jds = session.scalars(
-        select(Document).where(Document.owner_id == owner_id, Document.doc_type == DocType.jd)
+        select(Document).where(Document.owner_id.in_(owner_ids), Document.doc_type == DocType.jd)
     ).all()
-    return {jd.role_title: jd.id for jd in jds if jd.role_title is not None}
+    return {(jd.owner_id, jd.role_title): jd.id for jd in jds if jd.role_title is not None}
 
 
 def seed_demo_content(
@@ -106,16 +139,17 @@ def seed_demo_content(
     dataset: DemoDataset | None = None,
     store: BlobStore | None = None,
 ) -> None:
-    """Insert any demo subject and document not already present, owned by the demo manager.
+    """Insert any demo subject and document not already present, owned by the manager it names.
 
-    Subjects are matched by ``external_ref`` and documents by ``(owner_id, title)``, so a
-    re-run is a no-op. Feedback documents are linked to their subject and seeded as submitted,
-    representing the finished writing history the Pattern Dashboard mines. Each new subject also
-    gets a synthetic resume written to the blob store, so the download link (#118) resolves.
+    Each document names its owner (``owner_ref``); subjects match by ``external_ref`` and documents
+    by ``(owner_id, title)``, so a re-run is a no-op. Feedback and promotion documents link to their
+    subject; submitted ones are the finished writing history the Pattern Dashboard mines. Each new
+    subject also gets a synthetic resume written to the blob store, so the download link (#118)
+    resolves. Seed the users first (``seed_demo_users``) so every owner resolves.
     """
     dataset = dataset or load_demo_dataset()
     store = store or get_blob_store()
-    manager = _demo_manager(session)
+    managers_by_ref = _managers_by_ref(session, dataset)
 
     refs = [subject.external_ref for subject in dataset.subjects]
     subjects_by_ref = {
@@ -146,18 +180,22 @@ def seed_demo_content(
             )
             subject.resume_blob_ref = ref
 
+    owner_ids = [manager.id for manager in managers_by_ref.values()]
     titles = [document.title for document in dataset.documents]
-    existing_titles = set(
-        session.scalars(
-            select(Document.title).where(
-                Document.owner_id == manager.id, Document.title.in_(titles)
+    # Documents dedup on (owner, title): two managers may legitimately share a title (e.g. a JD for
+    # the same role), so scoping by owner keeps a re-run a no-op without collapsing them.
+    existing_pairs = set(
+        session.execute(
+            select(Document.owner_id, Document.title).where(
+                Document.owner_id.in_(owner_ids), Document.title.in_(titles)
             )
         ).all()
     )
     now = datetime.now(UTC)
     created: list[tuple[DocumentSeed, Document]] = []
     for document_seed in dataset.documents:
-        if document_seed.title in existing_titles:
+        owner = managers_by_ref[document_seed.owner_ref]
+        if (owner.id, document_seed.title) in existing_pairs:
             continue
         subject_id = (
             subjects_by_ref[document_seed.subject_ref].id
@@ -165,28 +203,35 @@ def seed_demo_content(
             else None
         )
         is_submitted = document_seed.status is DocumentStatus.submitted
+        # Back-date submitted history so the monthly trends span several months; a submitted doc
+        # with no offset lands "now", a draft has no submission timestamp at all.
+        submitted_at = (
+            now - timedelta(days=document_seed.submitted_days_ago or 0) if is_submitted else None
+        )
         document = Document(
-            owner_id=manager.id,
+            owner_id=owner.id,
             doc_type=document_seed.doc_type,
             title=document_seed.title,
             role_title=document_seed.role_title,
             subject_id=subject_id,
             content=document_seed.content,
             submitted_content=document_seed.content if is_submitted else None,
-            submitted_at=now if is_submitted else None,
+            submitted_at=submitted_at,
             status=document_seed.status,
         )
         session.add(document)
         created.append((document_seed, document))
     session.flush()
 
-    # Link each new feedback note to the JD for its role and seed each new JD's criteria, so the
-    # feedback drift check resolves a reference (#116). Only newly-created docs are touched, so a
-    # re-run stays a no-op.
-    jd_id_by_role = _jd_id_by_role(session, manager.id)
+    # Link each new feedback note to its own manager's JD for that role and seed each new JD's
+    # criteria, so the feedback drift check resolves a reference (#116). Only newly-created docs
+    # are touched, so a re-run stays a no-op.
+    jd_id_by_owner_role = _jd_id_by_owner_role(session, owner_ids)
     for document_seed, document in created:
         if document.doc_type is DocType.feedback and document.role_title is not None:
-            document.reference_jd_id = jd_id_by_role.get(document.role_title)
+            document.reference_jd_id = jd_id_by_owner_role.get(
+                (document.owner_id, document.role_title)
+            )
         for position, criterion in enumerate(document_seed.criteria):
             session.add(JdCriterion(jd_document_id=document.id, text=criterion, position=position))
 

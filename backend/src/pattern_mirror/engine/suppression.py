@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from pattern_mirror.engine.candidate_flag import CandidateFlag
 from pattern_mirror.engine.fingerprint import compute_sentence_fingerprint
-from pattern_mirror.engine.lemmatiser import lemma_key
+from pattern_mirror.engine.lemmatiser import get_nlp, lemma_key
 from pattern_mirror.engine.state import SuppressedFlag
 from pattern_mirror.models.engine import FlagDismissal
 
@@ -39,13 +39,35 @@ def load_active_dismissals(session: Session, document_id: uuid.UUID) -> list[Fla
     )
 
 
-def normalised_span_of(candidate: CandidateFlag) -> str:
-    """Return the lemma-normalised span used in a flag's dismissal signature.
+def _head_bias_lemma(raw_span: str) -> str:
+    """Reduce a contextual span to its head adjective lemma — the term identity patterns group on.
 
-    Dictionary flags carry a ``lemma_key`` already; contextual flags derive one from the raw
-    span. Shared by suppression matching and flag persistence so the two cannot drift.
+    Contextual flags arrive as whole phrases ("take an aggressive stance", "polished communicator",
+    "naturally collaborative"), so lemmatising the full span splits one coded concept ("aggressive",
+    "polished", "collaborative") across many keys. The Pattern Aggregator groups on this key, so a
+    concept then never reaches the ≥2-document count Fisher's exact needs and no pattern surfaces.
+    Collapsing to the span's first adjective lemma gives one stable identity per coded concept — the
+    bias adjective heads its phrase in feedback ("aggressive edge", "polished delivery"). A span
+    with no adjective (a coded noun/verb phrase) keeps the full lemma key, so nothing changes there.
     """
-    return candidate.lemma_key if candidate.lemma_key is not None else lemma_key(candidate.raw_span)
+    nlp = get_nlp()
+    for token in nlp(raw_span):
+        if token.pos_ == "ADJ":
+            return token.lemma_.lower()
+    return lemma_key(raw_span)
+
+
+def normalised_span_of(candidate: CandidateFlag) -> str:
+    """Return the lemma-normalised span used in a flag's dismissal signature and pattern grouping.
+
+    Dictionary flags carry a curated ``lemma_key`` already. Contextual flags have none, so they
+    derive one from the raw span — reduced to its coded adjective lemma(s) (``_head_bias_lemma``)
+    rather than the whole phrase, so the same concept in different wording shares one identity.
+    Shared by suppression matching and flag persistence so the two cannot drift.
+    """
+    if candidate.lemma_key is not None:
+        return candidate.lemma_key
+    return _head_bias_lemma(candidate.raw_span)
 
 
 @dataclass(frozen=True)

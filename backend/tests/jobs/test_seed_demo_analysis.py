@@ -16,7 +16,12 @@ from pattern_mirror.jobs import seed_demo_analysis as job
 from pattern_mirror.jobs.seed_demo_analysis import seed_demo_analysis
 from pattern_mirror.models.documents import AnalysisRun, Document
 from pattern_mirror.models.engine import Flag
-from pattern_mirror.models.enums import DocType, DocumentStatus
+from pattern_mirror.models.enums import (
+    AnalysisRunStatus,
+    AnalysisTrigger,
+    DocType,
+    DocumentStatus,
+)
 from pattern_mirror.models.identity import User
 from pattern_mirror.models.jd_criteria import JdCriterion
 from pattern_mirror.services.documents import list_flags
@@ -74,6 +79,26 @@ def test_is_idempotent_across_runs(db_session: Session) -> None:
         select(AnalysisRun).where(AnalysisRun.document_id == document.id)
     ).all()
     assert len(runs) == 1
+
+
+def test_retries_a_document_whose_only_run_failed(db_session: Session) -> None:
+    # A prior priming attempt errored (e.g. the Anthropic credit balance ran out mid-batch), leaving
+    # a failed run and no flags. The job must re-attempt it, not treat the failed run as done.
+    owner = _manager(db_session)
+    document = _submitted(db_session, owner, "We want a digital native.")
+    db_session.add(
+        AnalysisRun(
+            document_id=document.id,
+            trigger=AnalysisTrigger.submit,
+            content_hash="0" * 64,
+            status=AnalysisRunStatus.failed,
+        )
+    )
+    db_session.flush()
+
+    assert seed_demo_analysis(db_session) == 1
+    persisted = db_session.scalars(select(Flag).where(Flag.document_id == document.id)).all()
+    assert [flag.raw_span for flag in persisted] == ["digital native"]
 
 
 def test_skips_drafts(db_session: Session) -> None:
