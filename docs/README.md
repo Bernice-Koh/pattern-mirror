@@ -9,6 +9,7 @@
 | [architecture/dictionary-growth.md](architecture/dictionary-growth.md) | How the dictionary learns: trigger, four-agent debate, HR approval | Anyone touching the growth loop or dictionary |
 | [architecture/pattern-significance.md](architecture/pattern-significance.md) | Why a pattern surfaces: Fisher's exact gating on the dashboard | Anyone touching the Pattern Dashboard or aggregator |
 | [project-management.md](project-management.md) | How the project is run: sprints, epics/issues, how changes ship | Non-technical readers; anyone curious how it's delivered |
+| [architecture/data-model.md](architecture/data-model.md) | ER map of the core entities and the columns that earn an explanation | Anyone touching models or migrations |
 | [CONVENTIONS.md](CONVENTIONS.md) | How we work: folder structure, testing, git, PRs, project management | Contributors |
 | [CODE_STYLE.md](CODE_STYLE.md) | Language-level style rules for Python and TypeScript | Contributors |
 | [adr/](adr/) | Architecture decision records — what was decided, when, and why | Anyone asking "why is it like this?" |
