@@ -121,7 +121,6 @@ deploy/     docker-compose and deployment glue
 - [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — engineering workflow, testing, git, project management
 - [docs/CODE_STYLE.md](docs/CODE_STYLE.md) — language-level style rules for Python and TypeScript
 - [docs/adr/](docs/adr/) — architecture decision records
-- [docs/design-system/](docs/design-system/README.md) — how the design handoff was adopted
 - [CLAUDE.md](CLAUDE.md) — collaboration rules for AI-assisted development on this repo
 
 ---
