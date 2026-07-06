@@ -1,8 +1,7 @@
 # Pattern Mirror — frontend
 
 React + TypeScript + Vite single-page app for the Pattern Mirror manager and HR
-surfaces. See [docs/design-system](../docs/design-system/README.md) for the design
-system and [docs/adr](../docs/adr) for the foundation decisions.
+surfaces. See [docs/adr](../docs/adr) for the foundation decisions.
 
 ## Commands
 
