@@ -48,6 +48,8 @@ export interface PendingAddition {
   created_at: string
   decided_at: string | null
   citation: CitationSummary | null
+  /** Contextual-pass flags proposing this phrase firm-wide — its recurrence, and the word-cloud weight. */
+  flag_count: number
 }
 
 /** One growth agent's logged argument; `output` is the agent's raw structured result. */
