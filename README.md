@@ -104,7 +104,7 @@ Without an Anthropic API key the deterministic stages still run — dictionary f
 ## Roadmap
 
 - **MVP (programme scope):** the four manager views, the analysis engine with drift checks, the SG-scoped dictionary with the agentic growth loop, the HR portal, and a seeded demo dataset.
-- **Post-MVP (design only):** real feedback-system integration (MVP mocks peer feedback as synthetic data), RAG over blob storage for historical retrieval, multi-model gateway, additional region dictionaries, ATS/HRIS connectors. These are documented as proposals, not planned builds.
+- **Post-MVP (design only):** real feedback-system integration (MVP mocks peer feedback as synthetic data), RAG over blob storage for historical retrieval, multi-model gateway, video analysis as a drift reference, a hiring leaderboard, additional region dictionaries. Documented as proposals, not planned builds — see [docs/future.md](docs/future.md).
 
 ## Repository layout
 
