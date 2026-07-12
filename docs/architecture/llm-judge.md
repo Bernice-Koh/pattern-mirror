@@ -12,6 +12,8 @@ plausible explanation reads as convincing to the model that wrote it. The Judge 
 structured so that its evidence, its model, and its output format are all independent of
 the generator it is checking.
 
+**Research grounding:** each of these design choices — a different judge model, rubric decomposition over a scalar score, and self-consistency as the confidence signal — follows published LLM-as-a-judge findings, cited by arXiv id against the decision in [ADR-0013](../adr/0013-judge-context-rubric-self-consistency.md).
+
 ## One Judge run
 
 What happens when the engine's judge node executes, end to end:
