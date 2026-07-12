@@ -6,6 +6,8 @@ Built for the UBS Tomorrow's Talent Programme 2026, Technology Track.
 
 **Status:** in development — MVP targeted at the programme's final showcase (July 2026)
 
+**Portfolio deck:** a walkthrough of the product and the engineering behind it — [docs/pattern-mirror-deck.pdf](docs/pattern-mirror-deck.pdf)
+
 ---
 
 ## The problem

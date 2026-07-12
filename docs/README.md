@@ -2,6 +2,7 @@
 
 | Document | What it is | Audience |
 |---|---|---|
+| [pattern-mirror-deck.pdf](pattern-mirror-deck.pdf) | Portfolio deck: a walkthrough of the product and the engineering behind it | Reviewers, employers, technical peers |
 | [DESIGN_SPEC.md](DESIGN_SPEC.md) | The captured product design specification — the product source of truth | Everyone; binding on engine semantics |
 | [architecture/overview.md](architecture/overview.md) | The system as built: boundaries, engine shape, data paths | Anyone reading or reviewing the code |
 | [architecture/llm-judge.md](architecture/llm-judge.md) | The LLM Judge: rubric scoring, self-consistency confidence, calibration | Anyone interested in the LLM-as-judge design |
