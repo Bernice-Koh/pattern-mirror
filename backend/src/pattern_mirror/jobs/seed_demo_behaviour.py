@@ -53,11 +53,12 @@ def _adopt_probability(category: BiasCategory, days_ago: int) -> float:
 def _decision(flag: Flag, days_ago: int) -> FlagInteractionKind:
     """Accept or dismiss this flag, hitting the cohort's target adoption share deterministically.
 
-    The draw is a stable hash of the flag's identity, so a re-run reproduces the same mix (and the
-    firm-wide rate never collapses to 0% or 100%): gender-coded flags are revised least, recent
-    documents most, with realistic spread within each cohort.
+    The draw is a stable hash of the flag's *content* — not its database id — so a re-run, or a
+    fresh database with different autoincrement ids, reproduces the same mix (and the firm-wide
+    rate never collapses to 0% or 100%): gender-coded flags are revised least, recent documents
+    most, with realistic spread within each cohort.
     """
-    seed = f"{flag.document_id}:{flag.normalised_span}:{flag.sentence_fingerprint}"
+    seed = f"{flag.normalised_span}:{flag.sentence_fingerprint}"
     draw = (int(hashlib.sha256(seed.encode()).hexdigest(), 16) % 1000) / 1000
     if draw < _adopt_probability(flag.category, days_ago):
         return FlagInteractionKind.accept
