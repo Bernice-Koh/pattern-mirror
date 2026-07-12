@@ -1,88 +1,134 @@
 # pattern-mirror
 
-A longitudinal bias-pattern analysis tool for managers — real-time bias flagging in hiring and promotion writing, drift checks against stated criteria, and statistically-gated pattern surfacing across a manager's full body of writing.
+A longitudinal bias-pattern analysis tool for managers: real-time bias flagging in hiring and promotion writing, drift checks against stated criteria, and statistically-gated pattern surfacing across a manager's full body of writing.
 
-Built for the UBS Tomorrow's Talent Programme 2026, Technology Track.
+[![CI](https://github.com/Bernice-Koh/pattern-mirror/actions/workflows/ci.yml/badge.svg)](https://github.com/Bernice-Koh/pattern-mirror/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Status:** in development — MVP targeted at the programme's final showcase (July 2026)
+> **Portfolio deck — [full walkthrough (PDF)](docs/pattern-mirror-deck.pdf).** The product, the UI, and the research-grounded backend architecture.
 
-**Portfolio deck:** a walkthrough of the product and the engineering behind it — [docs/pattern-mirror-deck.pdf](docs/pattern-mirror-deck.pdf)
+Built solo for the UBS Tomorrow's Talent Programme 2026, Technology Track — an applied-AI and full-stack project delivered across a four-week MVP window.
 
 ---
 
 ## The problem
 
-Unconscious bias in job descriptions, interview feedback, and promotion write-ups filters out qualified candidates and creates regulatory exposure. Each document looks unobjectionable in isolation; the pattern only emerges across a manager's full body of writing — where no existing tool looks. Bias training never shows a manager their own writing, diversity dashboards report outcomes rather than the writing producing them, and single-document checkers flag one word at a time and get dismissed as noise.
+Unconscious bias persists in hiring decisions, despite the money firms spend on inclusivity training. Managers with hiring authority know the theory, but bias still creeps into the job descriptions, feedback, and promotion writeups they produce — and the tendency only shows across the whole body of writing over time, which no tool reviews.
 
-Pattern Mirror surfaces the patterns in a manager's own writing, with evidence, and leaves the decision with them.
+Pattern Mirror surfaces those patterns in a manager's own writing, with cited evidence — never as a hiring gate. Whether to act on what it shows stays the manager's decision.
 
-## What it does
+## Product overview
 
-Four views for the manager, all backed by one analysis engine and one database:
+Two portals over one analysis engine and one database: four views for managers, and an aggregate-only portal for HR.
 
-| View | What it does |
-|---|---|
-| **JD Studio** | Write job descriptions with live bias flagging: deterministic flags for established bias phrases, plus an LLM contextual pass that streams in after a typing pause and catches what a dictionary can't — coded language, requirements unrelated to the role. |
-| **Feedback Checkpoint** | Pre-submission check on interview feedback: the same bias flagging, plus drift against the criteria stated in the original JD — criteria the feedback never addressed, passages irrelevant to any criterion. |
-| **Promotion Writeup** | Pre-submission check on a promotion justification — the manager's written case for promoting an employee: bias flagging plus drift against that employee's historical peer feedback. |
-| **Pattern Dashboard** | The longitudinal view: recurring patterns across the manager's writing and their own decisions about flags. Only patterns passing a statistical significance test surface. |
+**Manager portal — four views:**
 
-HR Business Partners get a separate portal — aggregates only, never individual manager content:
+- **JD Studio** — write job descriptions with live bias flagging: instant deterministic flags, plus an LLM contextual pass that streams in after a typing pause.
+- **Feedback Checkpoint** — pre-submission check on interview feedback, plus drift against the original JD's stated criteria.
+- **Promotion Writeup** — pre-submission check on a promotion case, plus drift against the employee's historical peer feedback.
+- **Pattern Dashboard** — the longitudinal view: patterns across the manager's writing, surfaced only when statistically significant.
 
-| View | What it does |
-|---|---|
-| **Trends Dashboard** | Firm-level aggregated bias trends. Any aggregate covering fewer than three managers is suppressed, so no figure can identify an individual. |
-| **Dictionary Review** | The approval queue for proposed dictionary additions: each candidate arrives with the reviewing agents' reasoning and citation; HR approves, rejects, or defers in monthly bulk. |
+**HR portal — aggregates only, never individual content:**
 
-### A look at the interface
+- **Trends Dashboard** — firm-level bias trends; any aggregate covering fewer than three managers is suppressed, so no figure can identify an individual.
+- **Dictionary Review** — the approval queue for proposed dictionary additions, each arriving with the reviewing agents' reasoning and citation.
 
-| | |
-|---|---|
-| ![JD Studio: live bias flagging on a job description, with dictionary flags and streamed contextual flags](docs/assets/jd-studio.jpg) | ![Feedback Checkpoint: drift panel showing which JD criteria the feedback addressed and which it missed](docs/assets/feedback-checkpoint.jpg) |
-| **JD Studio** — dictionary flags land instantly; the contextual pass streams in the rest. | **Feedback Checkpoint** — drift against the original JD's criteria, each backed by a verbatim quote. |
-| ![Promotion Writeup: bias and rubric-coverage check, with what the employee's peers say as corroborating evidence](docs/assets/promotion-writeup.jpg) | ![Pattern Dashboard: a recurring writing pattern surfaced with its supporting counts and p-value](docs/assets/pattern-dashboard.jpg) |
-| **Promotion Writeup** — rubric coverage set against what the employee's peers actually said. | **Pattern Dashboard** — only patterns that pass a significance test surface. |
-| ![HR Portal: firm-level aggregate bias trends, no individual manager content](docs/assets/hr-portal.jpg) | ![HR Portal dictionary review: pending phrases as a word cloud sized by how often they were flagged](docs/assets/hr-portal-word-cloud.jpg) |
-| **HR Portal** — aggregate-only firm trends, never individual content. | **Dictionary Review** — proposed phrases as a word cloud, sized by how often each was flagged. |
-
-### Design principles
+**Design principles:**
 
 - **Mirror, not judge.** The tool shows patterns to the manager; it never penalises.
 - **Private by architecture.** Individual writing is visible only to the manager; HR sees aggregates only — enforced by the data model, not by policy.
 - **Non-blocking.** Every flag is dismissible. The tool never prevents a submission.
-- **Evidence for every flag.** Each observation cites peer-reviewed research, legislation-grounded guidance, or the manager's own documented pattern.
+- **Evidence for every flag.** Each observation cites peer-reviewed research or legislation-grounded guidance.
 
-## How it works
+**Not** a chatbot · **not** a training module · **not** a hiring gate.
+
+> Every view is shown in the [portfolio deck](docs/pattern-mirror-deck.pdf); or [run it locally](#getting-started) to explore the app live.
+
+## Technical design
 
 ### Bias detection pipeline
 
-The engine is a bounded flow orchestrated as an explicit state graph — every stage logged, every transition traceable, every flag span-verified:
+A bounded flow orchestrated as an explicit state graph — every stage logged, every transition traceable, every flag span-verified. A flag reaches the manager only by surviving every gate; the stage name links to its code.
 
-1. **Dictionary** — deterministic, lemma-aware matching against a curated, citation-backed dictionary. No LLM call.
-2. **Contextual Pass** — one schema-enforced LLM call that reads the document in context: it adds the non-literal flags a dictionary can't catch and rules on each dictionary hit in context (acceptable, acceptable with justification, unacceptable).
-3. **Adjudicator** — deterministic span verification: any LLM-claimed quote that doesn't exist verbatim in the source is dropped. Hallucinated flags cannot reach the manager.
-4. **Judge** — a second, smaller model re-examines each surviving flag against the document text itself, answering a fixed rubric several times; a flag's confidence is the fraction of runs agreeing it's biased. Low-confidence flags terminate here.
-5. **Recommendations** — 2–3 evidence-anchored alternative phrasings, only for flags above the confidence threshold.
+| Stage | What it does |
+|---|---|
+| [Dictionary](backend/src/pattern_mirror/engine/dictionary.py) | Deterministic, lemma-aware matching against a curated, citation-backed dictionary. No LLM call, milliseconds. |
+| [Contextual Pass](backend/src/pattern_mirror/engine/contextual_pass.py) | One schema-enforced LLM call: catches coded, non-literal language not yet in the dictionary, and judges whether each phrase is genuinely acceptable in context — a bona-fide occupational requirement ([GDOR](docs/references/tafep_example_excerpts.md)) or biased. |
+| [Adjudicator](backend/src/pattern_mirror/engine/adjudicator.py) | Deterministic span verification: any LLM-claimed quote absent verbatim from the source is dropped. Hallucinated flags cannot reach the manager. |
+| [Judge](backend/src/pattern_mirror/engine/judge.py) | A second, smaller model re-examines each surviving flag against the document, answering a fixed rubric several times; confidence is the fraction of runs agreeing it's biased. A [research-grounded](docs/architecture/llm-judge.md) confidence gate — low-confidence flags terminate here. |
+| [Recommendations](backend/src/pattern_mirror/engine/recommendations.py) | Two to three evidence-anchored alternative phrasings, only for flags above the confidence threshold. |
 
-Between adjudication and judging, flags the manager already dismissed in that document are suppressed — still logged, never resurfaced unless the surrounding sentence changes.
+Flags the manager already dismissed in a document are suppressed between adjudication and judging. The full graph, including the Verdict and Suppression modules: [architecture/overview.md](docs/architecture/overview.md).
+
+<details>
+<summary>Diagram — the bias-detection pipeline</summary>
+
+```mermaid
+flowchart TB
+    T[document text] --> D[Dictionary Module<br/>match known bias phrases]
+    D --> C[Contextual Pass Agent<br/>flag coded language in context]
+    C --> A[Adjudicator Module<br/>verify every quoted span]
+    A -- "quote not verbatim in document<br/>(hallucinated) — dropped" --> X1[logged, never surfaced]
+    A --> V[Verdict Module<br/>apply in-context rulings]
+    V -- "acceptable in this context<br/>(false positive) — suppressed" --> X1
+    V --> S[Suppression Module<br/>respect prior dismissals]
+    S -- "manager already dismissed this,<br/>context unchanged — suppressed" --> X1
+    S --> J[Judge Agent<br/>independent second opinion, N samples]
+    J -- "samples disagree it's biased<br/>(low confidence) — terminated" --> X1
+    J --> R[Recommendations Agent<br/>alternative phrasings]
+    R --> OUT[flags surfaced to the manager,<br/>each with citation + evidence]
+```
+
+</details>
+
+### Dictionary growth — the detector improves as it's used
+
+A self-growing fast path: phrases the Contextual Pass keeps flagging across documents become candidates, four agents (Proposer, Skeptic, Categorizer, Citation) debate each, and HR approves what goes live. Nothing enters the dictionary without a citation, a general (not role-specific) scope, and a human sign-off — so wider adoption sharpens detection instead of leaving HR to hand-seed new terms each week. Full design: [dictionary-growth.md](docs/architecture/dictionary-growth.md).
+
+<details>
+<summary>Diagram — the dictionary growth loop</summary>
+
+```mermaid
+flowchart TB
+    CP["Contextual Pass keeps flagging a phrase<br/>the dictionary doesn't know"] --> T{"trigger — recurring enough?<br/>proposed as general, uncatalogued, unreviewed,<br/>across ≥ N distinct documents and managers<br/>(config, defaults: 2 documents, 1 manager)"}
+    T -- no --> DROP1(["not a candidate — one-offs are noise,<br/>role-specific phrases stay context-only flags"])
+    T -- yes --> AGENTS
+
+    subgraph AGENTS["four independent agents, one candidate"]
+        direction LR
+        P["Proposer (Sonnet)<br/>argues FOR: names the protected<br/>characteristic, picks the category,<br/>drafts neutral alternatives"]
+        S["Skeptic (Sonnet)<br/>argues AGAINST: standard business<br/>language? too narrow? thin evidence?<br/>then gives its honest verdict"]
+        C["Categorizer (Haiku)<br/>scope: biased across hiring generally,<br/>or only for particular roles?"]
+        CI["Citation (Sonnet)<br/>finds academic or regulatory support;<br/>'no support exists' is a valid answer,<br/>never fabricates"]
+    end
+
+    AGENTS --> GATE{"the gate — all three:<br/>citation found<br/>AND scope is general<br/>AND Proposer or Skeptic in favour"}
+    GATE -- fails --> DROP2(["dropped — but the proposal row and all<br/>four agents' reasoning are persisted"])
+    GATE -- passes --> Q["pending_dictionary_additions queue<br/>phrase + category + citation + reasoning"]
+    Q --> HR{"HR reviews the queue<br/>(monthly bulk, human-in-the-loop)"}
+    HR -- reject / defer --> DROP3(["stamped with who and when;<br/>deferred items stay decidable"])
+    HR -- approve --> LIVE["live dictionaries row, citation attached"]
+    LIVE --> HIT(["next engine run: the phrase is a<br/>deterministic Stage-1 hit — no LLM needed"])
+```
+
+</details>
 
 ### Drift check
 
-The same engine with a swapped reference corpus: interview feedback is compared against the original JD's criteria, promotion write-ups against historical peer feedback. It names which criteria the writing addressed — each backed by a verbatim, verified quote — and which it didn't.
+The same engine run against a reference the writing should match: interview feedback against the JD's stated criteria, a promotion case against the employee's peer feedback. It reports which criteria the writing covered — each backed by a verified verbatim quote — and which it missed.
 
 ### Pattern surfacing
 
-Aggregated queries over the manager's flag history, no LLM involved. A pattern surfaces only when Fisher's exact test says it is statistically significant, not merely frequent.
-
-### Dictionary growth
-
-Phrases the Contextual Pass proposes repeatedly across documents become candidates. Four agents review each — Proposer, Skeptic, Categorizer, Citation — and a candidate advances to HR review only with a citation found, a general (not role-specific) scope, and at least one debater in favour. Approved entries land in the dictionary with their citation attached. The dictionary is Singapore-scoped for MVP and region-pluggable by design: the engine is region-agnostic, the dictionary is data.
+Aggregated queries over the manager's flag history, no LLM involved. A tendency is called a pattern only when Fisher's exact test says it is statistically significant, not merely frequent.
 
 ## Tech stack
 
 | Layer | Choices |
 |---|---|
-| Frontend | React 19 + TypeScript, Vite, Tailwind CSS v4, TipTap (editor surfaces), TanStack Router + Query; charts are in-house components over the design tokens |
+| Frontend | React 19 + TypeScript, Vite, Tailwind CSS v4, TipTap (editor surfaces), TanStack Router + Query; in-house chart components |
 | Backend | Python 3.12, FastAPI, SSE streaming, structlog |
 | AI / agents | Anthropic Claude — Sonnet 4.6 (analysis, recommendations, drift), Haiku 4.5 (judge); Instructor for structured outputs; LangGraph orchestration |
 | Data | PostgreSQL 16, SQLAlchemy 2.x, Alembic migrations; document text in Postgres, resume binaries in blob storage (local-disk stand-in in dev, Azure Blob in production) |
@@ -116,8 +162,8 @@ Without an Anthropic API key the deterministic stages still run — dictionary f
 
 ## Roadmap
 
-- **MVP (programme scope):** the four manager views, the analysis engine with drift checks, the SG-scoped dictionary with the agentic growth loop, the HR portal, and a seeded demo dataset.
-- **Post-MVP (design only):** real feedback-system integration (MVP mocks peer feedback as synthetic data), RAG over blob storage for historical retrieval, multi-model gateway, video analysis as a drift reference, a hiring leaderboard, additional region dictionaries. Documented as proposals, not planned builds — see [docs/future.md](docs/future.md).
+- **MVP (programme scope):** the manager and HR portals, the analysis engine with drift checks, the SG-scoped dictionary with its agentic growth loop, and a seeded demo dataset.
+- **Post-MVP:** design-only proposals, not planned builds — see [docs/future.md](docs/future.md).
 
 ## Repository layout
 
@@ -130,11 +176,18 @@ deploy/     docker-compose and deployment glue
 
 ## Documentation
 
-- [docs/DESIGN_SPEC.md](docs/DESIGN_SPEC.md) — the product design specification; the product source of truth
-- [docs/CONVENTIONS.md](docs/CONVENTIONS.md) — engineering workflow, testing, git, project management
-- [docs/CODE_STYLE.md](docs/CODE_STYLE.md) — language-level style rules for Python and TypeScript
-- [docs/adr/](docs/adr/) — architecture decision records
-- [CLAUDE.md](CLAUDE.md) — collaboration rules for AI-assisted development on this repo
+| Document | What it is |
+|---|---|
+| [docs/](docs/README.md) | The full documentation index |
+| [DESIGN_SPEC.md](docs/DESIGN_SPEC.md) | The product design specification |
+| [architecture/overview.md](docs/architecture/overview.md) | Overview of the technical architecture |
+| [architecture/llm-judge.md](docs/architecture/llm-judge.md) | The LLM-as-a-Judge design |
+| [adr/](docs/adr/) | Architecture decision records — what was decided, when, and why |
+| [CONVENTIONS.md](docs/CONVENTIONS.md) | Engineering workflow, testing, git, project management |
+| [CODE_STYLE.md](docs/CODE_STYLE.md) | Language-level style rules for Python and TypeScript |
+| [CLAUDE.md](CLAUDE.md) | Collaboration rules for AI-assisted development on this repo |
+
+The docs under [docs/architecture/](docs/architecture/overview.md) carry the rendered flow, sequence, and ER diagrams.
 
 ---
 
